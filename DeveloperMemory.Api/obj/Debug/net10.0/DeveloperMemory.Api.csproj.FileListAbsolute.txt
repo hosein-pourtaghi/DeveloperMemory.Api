@@ -1,0 +1,8 @@
+/Users/hosein/Documents/Projects/DeveloperMemory.Api/DeveloperMemory.Api/obj/Debug/net10.0/DeveloperMemory.Api.csproj.AssemblyReference.cache
+/Users/hosein/Documents/Projects/DeveloperMemory.Api/DeveloperMemory.Api/obj/Debug/net10.0/rpswa.dswa.cache.json
+/Users/hosein/Documents/Projects/DeveloperMemory.Api/DeveloperMemory.Api/obj/Debug/net10.0/DeveloperMemory.Api.GeneratedMSBuildEditorConfig.editorconfig
+/Users/hosein/Documents/Projects/DeveloperMemory.Api/DeveloperMemory.Api/obj/Debug/net10.0/DeveloperMemory.Api.AssemblyInfoInputs.cache
+/Users/hosein/Documents/Projects/DeveloperMemory.Api/DeveloperMemory.Api/obj/Debug/net10.0/DeveloperMemory.Api.AssemblyInfo.cs
+/Users/hosein/Documents/Projects/DeveloperMemory.Api/DeveloperMemory.Api/obj/Debug/net10.0/DeveloperMemory.Api.csproj.CoreCompileInputs.cache
+/Users/hosein/Documents/Projects/DeveloperMemory.Api/DeveloperMemory.Api/obj/Debug/net10.0/DeveloperMemory.Api.MvcApplicationPartsAssemblyInfo.cs
+/Users/hosein/Documents/Projects/DeveloperMemory.Api/DeveloperMemory.Api/obj/Debug/net10.0/DeveloperMemory.Api.MvcApplicationPartsAssemblyInfo.cache

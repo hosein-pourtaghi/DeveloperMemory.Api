@@ -1,0 +1,6 @@
+@DeveloperMemory.Api_HostAddress = http://localhost:5041
+
+GET {{DeveloperMemory.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

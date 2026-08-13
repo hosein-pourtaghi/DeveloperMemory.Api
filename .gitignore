@@ -1,0 +1,29 @@
+# Build artifacts
+bin/
+obj/
+
+# Visual Studio files
+*.suo
+*.user
+*.vspscc
+*.vssscc
+*.sln.docstates
+
+# JetBrains Rider files
+.idea/
+*.sln.iml
+
+# NuGet packages
+*.nupkg
+**/*.csproj.nuget.g.props
+**/*.csproj.nuget.g.targets
+
+# Environment-specific settings
+appsettings.json
+appsettings.*.json
+launchSettings.json
+
+# Logs and temp files
+*.log
+*.tmp
+*.bak

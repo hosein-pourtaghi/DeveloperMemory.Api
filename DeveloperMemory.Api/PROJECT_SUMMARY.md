@@ -3,6 +3,14 @@
 ## Project Overview
 The Developer Memory API is a .NET 10.0 Web API that serves as a knowledge management and AI assistant gateway. It enables developers to store, search, and retrieve technical knowledge while leveraging AI assistants to query that knowledge with contextual awareness.
 
+## Documentation Index
+- [README](README.md) - Quick start and overview
+- [Documentation](DOCUMENTATION.md) - Architectural overview
+- [API Specification](API_SPECIFICATION.md) - Detailed endpoint definitions
+- [Data Models](DATA_MODELS.md) - Complete model schemas
+- [Configuration](CONFIGURATION.md) - Configuration reference
+- [Error Handling](ERROR_HANDLING.md) - Troubleshooting guide
+
 ## Core Purpose
 - **Knowledge Management**: Store and search technical documentation in Markdown format
 - **Developer Profiles**: Manage developer profiles with skills, experience, and roles

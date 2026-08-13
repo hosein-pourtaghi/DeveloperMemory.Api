@@ -31,6 +31,7 @@ builder.Services.AddSingleton<KnowledgeService>();
 builder.Services.AddSingleton<PromptBuilder>();
 builder.Services.AddHttpClient<FreeLlmApiClient>();
 
+
 // Add CORS
 builder.Services.AddCors(options =>
 {

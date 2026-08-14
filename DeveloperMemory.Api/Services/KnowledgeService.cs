@@ -14,7 +14,7 @@ public class KnowledgeService
 
     public KnowledgeService(IConfiguration configuration)
     {
-        _knowledgeFolderPath = configuration.GetValue<string>("Paths:KnowledgeFolder");
+        _knowledgeFolderPath = configuration.GetValue<string>("AppSettings:Paths:KnowledgeFolder") ?? "./Knowledge";
     }
 
     public async Task<List<KnowledgeDocument>> LoadDocumentsAsync()

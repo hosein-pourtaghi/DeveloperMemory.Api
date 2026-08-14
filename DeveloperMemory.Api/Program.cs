@@ -47,14 +47,10 @@ builder.Services.AddSwaggerGen(c =>
         Scheme = "bearer",
         BearerFormat = "JWT"
     });
-
-    
 });
 
 // Configure AppSettings
 builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AppSettings"));
-builder.Services.Configure<FreeLlmApiSettings>(builder.Configuration.GetSection("FreeLlmApi"));
-builder.Services.Configure<PathSettings>(builder.Configuration.GetSection("Paths"));
 
 // Register services
 builder.Services.AddSingleton<ProfileService>();

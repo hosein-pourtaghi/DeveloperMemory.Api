@@ -50,9 +50,30 @@
 
 ## Proxy Controller (`/api/Proxy`)
 
-### AI Assistant Query
+### AI Assistant Query (Backward Compatible)
 - **Method**: POST
 - **Path**: `/api/Proxy`
 - **Description**: Forward a query to the LLM API with context.
 - **Request Body**: `PromptRequest` (JSON).
 - **Response**: `200 OK` - LLM response.
+
+### OpenAI-Compatible Endpoint
+- **Method**: POST
+- **Path**: `/v1/chat/completions`
+- **Description**: OpenAI-compatible endpoint for chat completions. Supports the same parameters as OpenAI API including system messages, model selection, and conversation context.
+- **Request Body**: `OpenAIChatCompletionRequest` (JSON) containing messages array with role and content.
+- **Response**: `200 OK` - `OpenAIChatCompletionResponse` containing the generated text.
+
+### Model Listing
+- **Method**: GET
+- **Path**: `/v1/chat/completions/models`
+- **Description**: Returns list of available models compatible with OpenAI API.
+- **Response**: `200 OK` - `OpenAIModelListResponse` containing available model identifiers.
+
+## Error Handling
+- All endpoints return standard HTTP status codes:
+  - `200 OK` - Success
+  - `400 Bad Request` - Invalid request format
+  - `500 Internal Server Error` - Server-side errors
+
+*All existing endpoints remain unchanged and fully functional. The new OpenAI-compatible endpoints are added without breaking existing functionality.*

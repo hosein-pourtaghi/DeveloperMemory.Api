@@ -13,7 +13,7 @@ public class ProfileService
 
     public ProfileService(IConfiguration configuration)
     {
-        _profilesFolderPath = configuration.GetValue<string>("Paths:ProfilesFolder");
+        _profilesFolderPath = configuration.GetValue<string>("AppSettings:Paths:ProfilesFolder") ?? "./Profiles";
     }
 
     public async Task<List<DeveloperProfile>> LoadProfilesAsync()

@@ -24,7 +24,7 @@ Represents a technical document stored in the system.
 | `Id` | `Guid` | Unique identifier |
 | `Title` | `string` | Document title |
 | `Content` | `string` | Markdown content |
-| `Project` | `Project` | Associated project name |
+| `Project` | `string` | Associated project name |
 | `Tags` | `List<string>` | Categorization tags |
 | `FilePath` | `string` | Path to the source markdown file |
 | `LastModified` | `DateTime` | Last modification timestamp |

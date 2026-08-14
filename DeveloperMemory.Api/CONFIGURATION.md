@@ -24,3 +24,54 @@ Standard ASP.NET Core and Serilog logging configuration.
 You can override these settings using environment variables, for example:
 - `FreeLlmApi__ApiKey`
 - `Paths__KnowledgeFolder`
+
+## Configuration Examples
+
+### appsettings.json
+```json
+{
+  "FreeLlmApi": {
+    "BaseUrl": "http://localhost:3001/v1",
+    "ApiKey": "your-api-key"
+  },
+  "Paths": {
+    "KnowledgeFolder": "Knowledge",
+    "ProfilesFolder": "Profiles"
+  },
+  "Logging": {
+    "Serilog": {
+      "WriteTo": {
+        "File": {
+          "Args": {
+            "path": "logs/devmemory-.log",
+            "rollingInterval": "Day",
+            "retainedFileCountLimit": 30
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### launchSettings.json
+```json
+{
+  "iisSettings": {
+    "windowsAuthentication": false,
+    "anonymousAuthentication": true,
+    "iisExpress": {
+      "applicationUrl": "https://localhost:7277",
+      "sslPort": 7477
+    }
+  },
+  "profiles": {
+    "DeveloperMemory.Api": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "applicationUrl": "https://localhost:7277",
+      "sslPort": 7477
+    }
+  }
+}

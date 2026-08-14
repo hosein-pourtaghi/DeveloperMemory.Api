@@ -1,80 +1,61 @@
 # Developer Memory API Documentation
 
-## Indexing Lifecycle
+## Overview
 
-The indexing lifecycle in Developer Memory API involves the following steps:
+The Developer Memory API is a .NET 10.0 Web API that serves as a knowledge management and AI assistant gateway. It enables developers to store, search, and retrieve technical knowledge while leveraging AI assistants to query that knowledge with contextual awareness.
 
-1. **File Discovery**
-   - Scans the `KnowledgeFolder` directory for Markdown files
-   - Creates new documents for each found file
+## Architecture
 
-2. **Parsing**
-   - Reads file content and extracts YAML frontmatter
-   - Parses metadata (title, project, tags)
-   - Extracts main content from Markdown
+This system follows a layered architecture:
 
-3. **Indexing**
-   - Stores documents in memory as KnowledgeDocument objects
-   - Creates search index with relevance scoring
-   - Updates document metadata (last modified timestamp)
+### Layers
 
-4. **Search Processing**
-   - Matches queries against title, content, project, and tags
-   - Calculates relevance score based on:
-     - Title match (0.5 points)
-     - Content match (0.3 points)
-     - Project match (0.1 points)
-     - Tag matches (0.1 points per match)
+1. **Presentation Layer**
+   - RESTful API endpoints exposed via ASP.NET Core
+   - Swagger UI for interactive documentation and testing
 
-5. **Reindexing**
-   - Triggered via POST /api/Knowledge/reindex
-   - Replaces current document list with newly loaded documents
-   - Maintains search index consistency
+2. **Application Layer**
+   - Controllers (`KnowledgeController`, `ProfilesController`, `ProxyController`)
+   - Services (`KnowledgeService`, `ProfileService`, `FreeLlmApiClient`, `PromptBuilder`)
+   - Business logic orchestration
 
-6. **Caching**
-   - Maintains in-memory cache of documents
-   - Updates cache on reindex or document modification
+3. **Domain Layer**
+   - Data models (`DeveloperProfile`, `KnowledgeDocument`, `PromptRequest`, `SearchResult`)
+   - YAML frontmatter parsing and validation
 
-## Knowledge Format Guide
+4. **Infrastructure Layer**
+   - Configuration management (`appsettings.json`)
+   - External LLM API integration
+   - Logging (Serilog)
 
-### YAML Frontmatter Requirements
+### Data Flow
 
-Both knowledge documents and developer profiles must use YAML frontmatter with the following structure:
+1. **Document Upload/Creation**
+   - Markdown files with YAML frontmatter are placed in `Paths:KnowledgeFolder`
+   - `KnowledgeService` parses files and creates `KnowledgeDocument` objects
+   - Documents are indexed for search
 
-```yaml
----
-title: "Document Title"
-project: "ProjectName"
-tags: ["tag1", "tag2", "tag3"]
----
-Document content here...
-```
+2. **Profile Management**
+   - Markdown files with YAML frontmatter are placed in `Paths:ProfilesFolder`
+   - `ProfileService` parses files and creates `DeveloperProfile` objects
 
-For developer profiles:
+3. **Query Processing**
+   - `ProxyController` receives AI queries via `PromptRequest`
+   - Combines relevant documents and profiles from the database
+   - Constructs a prompt using `PromptBuilder`
+   - Sends the prompt to the external LLM API
+   - Returns the LLM response
 
-```yaml
----
-name: "Developer Name"
-role: "Senior Developer"
-skills: ["C#", "ASP.NET"]
-experience: "10 years"
----
-Developer bio here...
-```
+4. **Indexing**
+   - Automatic reindexing triggered via `POST /api/Knowledge/reindex`
+   - Maintains search index with relevance scoring
 
-### Metadata Fields
+### Key Components
 
-**Knowledge Documents:**
-- `title` (required): Document title
-- `project` (optional): Associated project name
-- `tags` (optional): List of categorization tags
-
-**Developer Profiles:**
-- `name` (required): Full name
-- `role` (required): Professional role
-- `skills` (required): List of technical skills
-- `experience` (required): Years or description of experience
-
-## Architecture Diagram
-
-[Mermaid.js diagram would be inserted here showing controllers, services, models, and data flow]
+- **KnowledgeController**: Handles document search, retrieval, and reindexing
+- **ProfilesController**: Manages developer profile operations
+- **ProxyController**: Main AI assistant gateway combining context and forwarding requests
+- **KnowledgeService**: Document parsing, searching, and indexing with relevance scoring
+- **ProfileService**: Profile parsing and metadata extraction from Markdown files
+- **FreeLlmApiClient**: HTTP client for communicating with external LLM APIs
+- **PromptBuilder**: Constructs comprehensive prompts using profiles and search results

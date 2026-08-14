@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("DeveloperMemory.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a6270489d16b54bcf1c2ad5b3cd628a5cbb72862")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b590938e15111cb2e226cc8b051d3545f258895b")]
 [assembly: System.Reflection.AssemblyProductAttribute("DeveloperMemory.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("DeveloperMemory.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

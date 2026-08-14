@@ -1,51 +1,58 @@
 # Developer Memory API Documentation
 
-This document provides a high-level overview and architectural guide for the Developer Memory API. For detailed technical specifications, please refer to the following documents:
+## Indexing Lifecycle
 
-- [API Specification](API_SPECIFICATION.md)
-- [Data Models](DATA_MODELS.md)
-- [Configuration](CONFIGURATION.md)
-- [Error Handling](ERROR_HANDLING.md)
+The indexing lifecycle in Developer Memory API involves the following steps:
 
-## Overview
-The Developer Memory API is a .NET 10.0 Web API designed as a knowledge management and AI assistant gateway. It provides three core functionalities:
-1. **Knowledge Management**: Store, search, and manage technical documents.
-2. **Developer Profiles**: Store and manage developer profiles.
-3. **AI Assistant Gateway**: Proxy requests to external LLM APIs with contextual information.
+1. **File Discovery**
+   - Scans the `KnowledgeFolder` directory for Markdown files
+   - Creates new documents for each found file
 
-## Architecture
-The API follows a clean separation of concerns:
+2. **Parsing**
+   - Reads file content and extracts YAML frontmatter
+   - Parses metadata (title, project, tags)
+   - Extracts main content from Markdown
 
-### Controllers
-- `KnowledgeController`: Handles document search, retrieval, and reindexing.
-- `ProfilesController`: Manages developer profile operations.
-- `ProxyController`: The main AI assistant gateway that combines context and forwards requests.
+3. **Indexing**
+   - Stores documents in memory as KnowledgeDocument objects
+   - Creates search index with relevance scoring
+   - Updates document metadata (last modified timestamp)
 
-### Services
-- `KnowledgeService`: Document parsing, searching, and indexing with relevance scoring.
-- `ProfileService`: Profile parsing and metadata extraction from Markdown files.
-- `FreeLlmApiClient`: HTTP client for communicating with external LLM APIs.
-- `PromptBuilder`: Constructs comprehensive prompts using profiles and search results.
+4. **Search Processing**
+   - Matches queries against title, content, project, and tags
+   - Calculates relevance score based on:
+     - Title match (0.5 points)
+     - Content match (0.3 points)
+     - Project match (0.1 points)
+     - Tag matches (0.1 points per match)
 
-## Data Storage
-- **Knowledge Documents**: Stored as Markdown files in the configured `KnowledgeFolder` with YAML frontmatter.
-- **Developer Profiles**: Stored as Markdown files in the configured `ProfilesFolder` with YAML frontmatter.
+5. **Reindexing**
+   - Triggered via POST /api/Knowledge/reindex
+   - Replaces current document list with newly loaded documents
+   - Maintains search index consistency
 
-## Frontmatter Format
-Both documents and profiles use YAML frontmatter for metadata:
+6. **Caching**
+   - Maintains in-memory cache of documents
+   - Updates cache on reindex or document modification
+
+## Knowledge Format Guide
+
+### YAML Frontmatter Requirements
+
+Both knowledge documents and developer profiles must use YAML frontmatter with the following structure:
 
 ```yaml
-# Knowledge Document Example
 ---
 title: "Document Title"
 project: "ProjectName"
-tags: ["tag1", "tag2"]
+tags: ["tag1", "tag2", "tag3"]
 ---
 Document content here...
 ```
 
+For developer profiles:
+
 ```yaml
-# Developer Profile Example
 ---
 name: "Developer Name"
 role: "Senior Developer"
@@ -53,3 +60,21 @@ skills: ["C#", "ASP.NET"]
 experience: "10 years"
 ---
 Developer bio here...
+```
+
+### Metadata Fields
+
+**Knowledge Documents:**
+- `title` (required): Document title
+- `project` (optional): Associated project name
+- `tags` (optional): List of categorization tags
+
+**Developer Profiles:**
+- `name` (required): Full name
+- `role` (required): Professional role
+- `skills` (required): List of technical skills
+- `experience` (required): Years or description of experience
+
+## Architecture Diagram
+
+[Mermaid.js diagram would be inserted here showing controllers, services, models, and data flow]

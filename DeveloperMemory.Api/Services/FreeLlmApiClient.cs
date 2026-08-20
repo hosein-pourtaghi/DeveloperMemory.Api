@@ -19,6 +19,12 @@ public class FreeLlmApiClient
     private readonly AppSettings _appSettings;
     private readonly ILogger<FreeLlmApiClient> _logger;
 
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+    };
+
     public FreeLlmApiClient(HttpClient httpClient, IOptions<AppSettings> appSettings, ILogger<FreeLlmApiClient> logger)
     {
         _httpClient = httpClient;
@@ -32,56 +38,103 @@ public class FreeLlmApiClient
         }
     }
 
-    public async Task<string> SendPromptAsync(string prompt, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Resolves the model to use for a request.
+    /// Priority: per-request override > configured DefaultModel > "auto".
+    /// </summary>
+    private string ResolveModel(string? requestModel)
+    {
+        if (!string.IsNullOrWhiteSpace(requestModel))
+            return requestModel;
+
+        if (!string.IsNullOrWhiteSpace(_appSettings.FreeLlmApi.DefaultModel))
+            return _appSettings.FreeLlmApi.DefaultModel;
+
+        return "auto";
+    }
+
+    /// <summary>
+    /// Forwards the full OpenAI chat completion request to the upstream LLM API.
+    /// The enriched prompt (with knowledge + profile context) replaces the last user message.
+    /// Model resolution: per-request override → configured DefaultModel → "auto".
+    /// </summary>
+    public async Task<OpenAIChatCompletionResponse> SendCompletionAsync(
+        OpenAIChatCompletionRequest request,
+        string enrichedPrompt,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(_appSettings.FreeLlmApi.BaseUrl))
         {
             throw new InvalidOperationException("FreeLlmApi base URL is not configured");
         }
 
-        // Build OpenAI-compatible chat completion request
-        var request = new OpenAIChatCompletionRequest
+        // Resolve model: per-request override wins, then config, then "auto"
+        request.Model = ResolveModel(request.Model);
+
+        // Replace the last user message with the enriched prompt
+        var lastUserIndex = request.Messages.FindLastIndex(m => m.Role == "user");
+        if (lastUserIndex >= 0)
         {
-            Model = "gpt-3.5-turbo", // Default model, can be overridden
-            Messages = new List<Message>
-            {
-                new Message
-                {
-                    Role = "user",
-                    Content = prompt
-                }
-            },
-            Temperature = 0.7,
-            MaxTokens = 150,
-            Stream = false
-        };
+            request.Messages[lastUserIndex].Content = enrichedPrompt;
+        }
+        else
+        {
+            request.Messages.Add(new Message { Role = "user", Content = enrichedPrompt });
+        }
 
         var content = new StringContent(
-            JsonSerializer.Serialize(request),
+            JsonSerializer.Serialize(request, JsonOptions),
             Encoding.UTF8,
             "application/json");
+
+        _logger.LogInformation("Sending request to FreeLLM: model={Model}, temperature={Temp}, maxTokens={MaxTokens}",
+            request.Model, request.Temperature, request.MaxTokens);
 
         var response = await _httpClient.PostAsync(_appSettings.FreeLlmApi.BaseUrl, content, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
             var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogError("Error from FreeLlm API: {ErrorContent}", errorContent);
+            _logger.LogError("Error from FreeLlm API: {StatusCode} - {ErrorContent}", response.StatusCode, errorContent);
             throw new HttpRequestException($"Error from FreeLlm API: {errorContent}");
         }
 
         var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
-        
+
         try
         {
-            var responseData = JsonSerializer.Deserialize<OpenAIChatCompletionResponse>(responseContent);
-            return responseData?.Choices?.FirstOrDefault()?.Message?.Content ?? string.Empty;
+            var responseData = JsonSerializer.Deserialize<OpenAIChatCompletionResponse>(responseContent, JsonOptions);
+            return responseData ?? new OpenAIChatCompletionResponse();
         }
         catch (JsonException ex)
         {
             _logger.LogError(ex, "Failed to deserialize FreeLlm API response");
             throw;
         }
+    }
+
+    /// <summary>
+    /// Legacy method for /api/Proxy endpoint.
+    /// Resolves model from: explicit requestModel → DefaultModel config → "auto".
+    /// </summary>
+    public async Task<string> SendPromptAsync(string prompt, string? requestModel = null, CancellationToken cancellationToken = default)
+    {
+        var model = ResolveModel(requestModel);
+
+        var request = new OpenAIChatCompletionRequest
+        {
+            Model = model,
+            Messages = new List<Message>
+            {
+                new Message { Role = "user", Content = prompt }
+            },
+            Temperature = 0.7,
+            MaxTokens = 150,
+            Stream = false
+        };
+
+        var response = await SendCompletionAsync(request, prompt, cancellationToken);
+        return response.Choices?.FirstOrDefault()?.Message?.Content ?? string.Empty;
     }
 
     public async Task<List<string>> GetModelsAsync(CancellationToken cancellationToken = default)
@@ -93,8 +146,6 @@ public class FreeLlmApiClient
 
         try
         {
-            // Construct the models endpoint URL from the base URL
-            // BaseUrl is like "http://localhost:3001/v1", so models endpoint is "http://localhost:3001/v1/models"
             var baseUri = new Uri(_appSettings.FreeLlmApi.BaseUrl);
             var modelsUrl = $"{baseUri.Scheme}://{baseUri.Host}:{baseUri.Port}/v1/models";
 
@@ -107,10 +158,10 @@ public class FreeLlmApiClient
             }
 
             var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
-            
+
             try
             {
-                var modelResponse = JsonSerializer.Deserialize<OpenAIModelListResponse>(responseContent);
+                var modelResponse = JsonSerializer.Deserialize<OpenAIModelListResponse>(responseContent, JsonOptions);
                 return modelResponse?.Data?.Select(m => m.Id).ToList() ?? new List<string>();
             }
             catch (JsonException ex)

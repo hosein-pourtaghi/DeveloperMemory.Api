@@ -42,24 +42,96 @@ All services are registered as **Singletons** (services load from filesystem and
 4. Search uses keyword matching with relevance scoring: title (0.5) > content (0.3) > project (0.1) > tags (0.1 each)
 
 **AI Proxy Query (`/api/Proxy`):**
-1. `PromptRequest` arrives with query, optional project/tags filter, optional profile ID
+1. `PromptRequest` arrives with query, optional project/tags filter, optional profile ID, optional model override
 2. `ProfileService` loads all profiles from `Paths:ProfilesFolder`
 3. `KnowledgeService` searches documents matching query/project/tags
 4. `PromptBuilder` assembles: system prompt + profile context + search results + user query
-5. `FreeLlmApiClient` sends assembled prompt to the configured LLM API
+5. `FreeLlmApiClient` sends assembled prompt to the configured LLM API with resolved model
 6. LLM response is returned as-is
 
 **OpenAI-Compatible Endpoint (`/v1/chat/completions`):**
-1. Standard OpenAI chat completion request arrives
+1. Standard OpenAI chat completion request arrives with model/temperature/max_tokens
 2. Last user message is extracted as the search query
 3. Same context-enrichment flow as above (profiles + document search + prompt building)
-4. Response is mapped back to OpenAI response format (`OpenAIChatCompletionResponse`)
+4. Model resolution: per-request `model` field → `DefaultModel` config → `"auto"`
+5. Response is mapped back to OpenAI response format (`OpenAIChatCompletionResponse`)
+
+### Model Resolution Priority
+
+The model used for LLM requests is resolved in this order:
+1. **Per-request override** — `model` field in the request body (highest priority)
+2. **Configuration** — `AppSettings:FreeLlmApi:DefaultModel` from `appsettings.json`
+3. **Fallback** — `"auto"` (router picks the best available model)
 
 ### Startup Behavior
 
 - Documents are **loaded on startup**: `await knowledgeService.LoadDocumentsAsync()`
 - Swagger UI is available in Development mode at `/swagger`
 - Health check endpoint: `GET /health`
+
+## FreeLLM Routing Modes
+
+DeveloperMemory integrates with FreeLLM API's model routing system. Supported routing modes:
+
+| Mode | Description | When to Use |
+|---|---|---|
+| `auto` | Router picks the best available model | Default — good for general queries |
+| `auto:fast` | Router picks the fastest available model | Latency-sensitive requests |
+| `auto:smart` | Router picks the most capable available model | Complex reasoning tasks |
+| `fusion` | Multiple models answer in parallel, a judge synthesizes one answer | High-quality responses, research |
+| Explicit ID | Any model ID from FreeLLM catalog (e.g. `gemini-3.5-flash`) | Pin to a specific model |
+
+### Configuration
+
+Set the default routing mode in `appsettings.json`:
+```json
+{
+  "AppSettings": {
+    "FreeLlmApi": {
+      "BaseUrl": "http://localhost:3001/v1",
+      "ApiKey": "your-api-key",
+      "DefaultModel": "auto"
+    }
+  }
+}
+```
+
+Override via environment variable: `AppSettings__FreeLlmApi__DefaultModel=auto:fast`
+
+### Per-Request Model Override
+
+Any request can override the configured default by including a `model` field:
+
+**Via `/api/Proxy`:**
+```json
+{
+  "query": "How do I optimize this query?",
+  "model": "auto:smart",
+  "project": "MyApp"
+}
+```
+
+**Via `/v1/chat/completions` (OpenAI-compatible):**
+```json
+{
+  "model": "fusion",
+  "messages": [
+    { "role": "user", "content": "Explain SOLID principles" }
+  ],
+  "temperature": 0.7,
+  "max_tokens": 500
+}
+```
+
+**Pin to a specific model:**
+```json
+{
+  "model": "gemini-3.5-flash",
+  "messages": [
+    { "role": "user", "content": "Quick question" }
+  ]
+}
+```
 
 ## Complete API Reference
 
@@ -71,8 +143,19 @@ All services are registered as **Singletons** (services load from filesystem and
 | `GET` | `/api/Knowledge/documents` | Get all documents | — |
 | `GET` | `/api/Knowledge/{id}` | Get document by GUID | `id` (path) |
 | `POST` | `/api/Knowledge/reindex` | Reload and reindex all documents | — |
+| `POST` | `/api/Knowledge` | Create a new knowledge document | Body: `CreateDocumentRequest` JSON |
 
 **Response:** `SearchResult[]` for search, `KnowledgeDocument[]` for document listing.
+
+**Create Document Request (`CreateDocumentRequest`):**
+```json
+{
+  "title": "My New Document",
+  "content": "# Document content here...",
+  "project": "MyProject",
+  "tags": ["dotnet", "api"]
+}
+```
 
 ### Profiles Controller (`/api/Profiles`)
 
@@ -96,7 +179,8 @@ All services are registered as **Singletons** (services load from filesystem and
   "project": "MyProject",
   "tags": ["logging", "dotnet"],
   "profileId": "guid-string",
-  "systemPrompt": "You are a helpful .NET assistant."
+  "systemPrompt": "You are a helpful .NET assistant.",
+  "model": "auto:fast"
 }
 ```
 
@@ -110,7 +194,7 @@ All services are registered as **Singletons** (services load from filesystem and
 **Request body (`OpenAIChatCompletionRequest`):**
 ```json
 {
-  "model": "gpt-3.5-turbo",
+  "model": "auto",
   "messages": [
     { "role": "system", "content": "You are a helpful assistant." },
     { "role": "user", "content": "How do I use dependency injection?" }
@@ -124,6 +208,43 @@ All services are registered as **Singletons** (services load from filesystem and
 ```
 
 Non-standard fields (`project`, `tags`, `profile_id`) are extensions for context filtering.
+
+### Sample Requests by Routing Mode
+
+**Auto routing (default):**
+```bash
+curl -X POST http://localhost:5041/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"auto","messages":[{"role":"user","content":"Hello"}]}'
+```
+
+**Fast auto routing:**
+```bash
+curl -X POST http://localhost:5041/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"auto:fast","messages":[{"role":"user","content":"Quick question"}]}'
+```
+
+**Smart auto routing:**
+```bash
+curl -X POST http://localhost:5041/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"auto:smart","messages":[{"role":"user","content":"Complex architecture question"}]}'
+```
+
+**Fusion (multi-model):**
+```bash
+curl -X POST http://localhost:5041/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"fusion","messages":[{"role":"user","content":"Best practices for .NET"}]}'
+```
+
+**Explicit model:**
+```bash
+curl -X POST http://localhost:5041/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gemini-3.5-flash","messages":[{"role":"user","content":"Explain async/await"}]}'
+```
 
 ### Health Check
 
@@ -175,6 +296,7 @@ Non-standard fields (`project`, `tags`, `profile_id`) are extensions for context
 | `Tags` | `List<string>?` | Filter documents by tags |
 | `ProfileId` | `string?` | Developer profile GUID to include as context |
 | `SystemPrompt` | `string?` | Custom system instructions for the LLM |
+| `Model` | `string?` | Model routing mode override (auto, auto:fast, auto:smart, fusion, or explicit ID) |
 
 ### OpenAI Types
 - `OpenAIChatCompletionRequest`: Standard fields (`model`, `messages`, `temperature`, `max_tokens`, `stream`) plus extensions (`project`, `tags`, `profile_id`)
@@ -194,7 +316,8 @@ Non-standard fields (`project`, `tags`, `profile_id`) are extensions for context
   "AppSettings": {
     "FreeLlmApi": {
       "BaseUrl": "http://localhost:3001/v1",
-      "ApiKey": "your-api-key"
+      "ApiKey": "your-api-key",
+      "DefaultModel": "auto"
     },
     "Paths": {
       "KnowledgeFolder": "./Knowledge",
@@ -212,11 +335,12 @@ Non-standard fields (`project`, `tags`, `profile_id`) are extensions for context
 ```
 
 ### Environment Variable Overrides
-Use `__` separator: `AppSettings__FreeLlmApi__ApiKey`, `AppSettings__Paths__KnowledgeFolder`
+Use `__` separator: `AppSettings__FreeLlmApi__ApiKey`, `AppSettings__FreeLlmApi__DefaultModel`, `AppSettings__Paths__KnowledgeFolder`
 
 ### Strongly-Typed Settings
 - `AppSettings.FreeLlmApi.BaseUrl` — LLM API base URL (must include `/v1` suffix)
 - `AppSettings.FreeLlmApi.ApiKey` — Bearer token for LLM API auth
+- `AppSettings.FreeLlmApi.DefaultModel` — Default routing mode (auto, auto:fast, auto:smart, fusion, or explicit model ID)
 - `AppSettings.Paths.KnowledgeFolder` — Directory for knowledge `.md` files
 - `AppSettings.Paths.ProfilesFolder` — Directory for profile `.md` files
 

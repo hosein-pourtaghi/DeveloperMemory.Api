@@ -19,12 +19,12 @@ DeveloperMemory.Api/
 ├── Models/                # Data structures (5 files)
 │   ├── KnowledgeDocument.cs         # Document model
 │   ├── DeveloperProfile.cs          # Profile model
-│   ├── PromptRequest.cs             # Proxy request model
+│   ├── PromptRequest.cs             # Proxy request model (includes Model override)
 │   ├── SearchResult.cs              # Search result model
 │   └── OpenAIRequestResponse.cs     # All OpenAI-compatible types
 ├── Infrastructure/
 │   ├── Configuration/
-│   │   └── AppSettings.cs           # Strongly-typed settings
+│   │   └── AppSettings.cs           # Strongly-typed settings (includes DefaultModel)
 │   └── Extensions/
 │       └── ServiceCollectionExtensions.cs  # DI helper (currently unused in Program.cs)
 ├── Knowledge/             # Markdown files (knowledge documents)
@@ -65,6 +65,7 @@ DeveloperMemory.Api/
 - Services use constructor injection
 - `KnowledgeService` and `ProfileService` hold in-memory caches (`_documents`, profiles loaded on each call)
 - External HTTP calls go through `FreeLlmApiClient` which manages auth headers
+- Model resolution follows: per-request override → `DefaultModel` config → `"auto"` fallback
 
 ### Documentation
 - Add XML doc comments to public methods (project has `<GenerateDocumentationFile>true</GenerateDocumentationFile>`)
@@ -111,9 +112,24 @@ DeveloperMemory.Api/
 
 6. **PromptBuilder truncates content**: Search results in prompts are truncated to 200 characters (`result.Content.Substring(0, Math.Min(200, result.Content.Length))`).
 
-7. **`FreeLlmApiClient` uses model `gpt-3.5-turbo` by default**: The model is hardcoded in `SendPromptAsync` and not configurable per-request.
+7. **Model resolution is configurable**: Default model is set in `appsettings.json` under `AppSettings:FreeLlmApi:DefaultModel` (default: `"auto"`). Can be overridden per-request via the `model` field.
 
 8. **CORS is wide open**: `AllowAll` policy allows any origin, method, and header. This is for development only.
+
+## FreeLLM Routing Modes
+
+| Mode | Description | When to Use |
+|---|---|---|
+| `auto` | Router picks the best available model | Default — good for general queries |
+| `auto:fast` | Router picks the fastest available model | Latency-sensitive requests |
+| `auto:smart` | Router picks the most capable available model | Complex reasoning tasks |
+| `fusion` | Multiple models answer in parallel, judge synthesizes | High-quality responses |
+| Explicit ID | Pin to a specific model (e.g. `gemini-3.5-flash`) | When you need a specific model |
+
+### Model Resolution Priority
+1. Per-request `model` field (highest priority)
+2. `AppSettings:FreeLlmApi:DefaultModel` from config
+3. `"auto"` fallback
 
 ## Testing Checklist
 

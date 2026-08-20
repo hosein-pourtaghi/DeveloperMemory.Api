@@ -3,6 +3,7 @@ using DeveloperMemory.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -65,14 +66,14 @@ public class OpenAIChatCompletionController : ControllerBase
                 });
             }
 
-            // Map OpenAI request to internal request
+            // Map OpenAI request to internal request for knowledge search
             var internalRequest = new PromptRequest
             {
                 Query = lastUserMessage.Content,
                 Project = request.Project,
                 Tags = request.Tags,
                 ProfileId = request.ProfileId,
-                SystemPrompt = request.Messages.FirstOrDefault(m => m.Role == "system")?.Content ?? "You are a helpful assistant."
+                SystemPrompt = request.Messages.FirstOrDefault(m => m.Role == "system")?.Content
             };
 
             // Load profiles and documents
@@ -85,43 +86,25 @@ public class OpenAIChatCompletionController : ControllerBase
                 internalRequest.Project,
                 internalRequest.Tags);
 
-            // Build prompt with knowledge injection
-            var prompt = _promptBuilder.BuildPrompt(internalRequest, profiles, searchResults);
+            // Build enriched prompt with knowledge injection
+            var enrichedPrompt = _promptBuilder.BuildPrompt(internalRequest, profiles, searchResults);
 
-            // Send to FreeLlm API
-            var response = await _freeLlmApiClient.SendPromptAsync(prompt);
+            _logger.LogInformation("Forwarding to FreeLLM: model={Model}, temp={Temp}, maxTokens={MaxTokens}, query={Query}",
+                request.Model, request.Temperature, request.MaxTokens, lastUserMessage.Content.Substring(0, System.Math.Min(50, lastUserMessage.Content.Length)));
 
-            // Map response to OpenAI format
-            var openAIResponse = new OpenAIChatCompletionResponse
+            // Forward the FULL request to FreeLLM — model, temperature, max_tokens, stream all preserved
+            // Only the last user message content is replaced with the enriched prompt
+            var response = await _freeLlmApiClient.SendCompletionAsync(request, enrichedPrompt, cancellationToken);
+
+            // Ensure the response model matches what was requested
+            if (string.IsNullOrEmpty(response.Model))
             {
-                Id = System.Guid.NewGuid().ToString(),
-                Object = "chat.completion",
-                Created = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                Model = request.Model ?? "gpt-3.5-turbo",
-                Choices = new List<Choice>
-                {
-                    new Choice
-                    {
-                        Index = 0,
-                        Message = new Message
-                        {
-                            Role = "assistant",
-                            Content = response
-                        },
-                        FinishReason = "stop"
-                    }
-                },
-                Usage = new Usage
-                {
-                    PromptTokens = null,
-                    CompletionTokens = null,
-                    TotalTokens = null
-                }
-            };
+                response.Model = request.Model ?? "unknown";
+            }
 
-            return Ok(openAIResponse);
+            return Ok(response);
         }
-        catch (Exception ex)
+        catch (System.Exception ex)
         {
             _logger.LogError(ex, "Error processing OpenAI chat completion request");
             return StatusCode(500, new OpenAIChatCompletionResponse
@@ -141,7 +124,6 @@ public class OpenAIChatCompletionController : ControllerBase
     {
         try
         {
-            // Try to get models from upstream API
             var upstreamModels = await _freeLlmApiClient.GetModelsAsync();
             if (upstreamModels != null && upstreamModels.Any())
             {
@@ -158,16 +140,12 @@ public class OpenAIChatCompletionController : ControllerBase
                 return Ok(modelList);
             }
         }
-        catch (Exception ex)
+        catch (System.Exception ex)
         {
             _logger.LogWarning(ex, "Could not fetch models from upstream API, using defaults");
         }
 
-        // Fallback to default models
-        var models = new OpenAIModelListResponse
-        { 
-        };
-
+        var models = new OpenAIModelListResponse { };
         return Ok(models);
     }
 }

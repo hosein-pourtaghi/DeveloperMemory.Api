@@ -1,9 +1,7 @@
 using DeveloperMemory.Api.Models;
 using DeveloperMemory.Api.Services;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace DeveloperMemory.Api.Controllers;
@@ -16,6 +14,23 @@ public class ProxyController : ControllerBase
     private readonly PromptBuilder _promptBuilder;
     private readonly KnowledgeService _knowledgeService;
     private readonly ProfileService _profileService;
+
+    private const string DefaultSystemPrompt = @"You are an expert software engineer and coding assistant. You write clean, maintainable, and well-documented code following best practices for the developer's tech stack.
+
+Coding Style:
+- Use clear, descriptive variable and function names
+- Follow SOLID principles
+- Add XML comments to public methods
+- Use appropriate design patterns
+- Handle errors gracefully with proper logging
+- Write code that is easy to test
+
+When answering:
+- Provide working code examples
+- Explain your reasoning
+- Consider edge cases and error handling
+- Suggest improvements when appropriate
+- Match the developer's existing code style";
 
     public ProxyController(
         FreeLlmApiClient freeLlmApiClient,
@@ -44,14 +59,20 @@ public class ProxyController : ControllerBase
                 request.Project,
                 request.Tags);
 
+            // Apply default system prompt if none provided
+            if (string.IsNullOrEmpty(request.SystemPrompt))
+            {
+                request.SystemPrompt = DefaultSystemPrompt;
+            }
+
             // Build prompt
             var prompt = _promptBuilder.BuildPrompt(
                 request,
                 profiles,
                 searchResults);
 
-            // Send to FreeLlm API
-            var response = await _freeLlmApiClient.SendPromptAsync(prompt);
+            // Send to FreeLlm API with model override support
+            var response = await _freeLlmApiClient.SendPromptAsync(prompt, request.Model);
 
             return Ok(response);
         }

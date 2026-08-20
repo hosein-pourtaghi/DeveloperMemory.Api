@@ -17,7 +17,7 @@ Cline connects to DeveloperMemory API as its OpenAI-compatible endpoint. When yo
 
 ## Configuration in Cline
 Set the API base URL to: `http://localhost:5041/v1` (or `https://localhost:7144/v1` for HTTPS)
-Set the model to: `gpt-3.5-turbo` (or whatever model FreeLLM supports)
+Set the model to: `auto` (or whatever model FreeLLM supports)
 
 ## What Gets Injected
 - **Developer Profile**: Your name, role, skills, experience, and bio

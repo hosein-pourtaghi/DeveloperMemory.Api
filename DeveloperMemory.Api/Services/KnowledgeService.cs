@@ -152,4 +152,43 @@ public class KnowledgeService
 
         return score;
     }
+
+    public async Task<KnowledgeDocument> CreateDocumentAsync(string title, string content, string? project = null, List<string>? tags = null)
+    {
+        // Create the frontmatter
+        var frontmatter = $"---\ntitle: \"{title}\"\n";
+        if (!string.IsNullOrEmpty(project))
+        {
+            frontmatter += $"project: \"{project}\"\n";
+        }
+        if (tags != null && tags.Any())
+        {
+            frontmatter += $"tags: {string.Join(", ", tags)}\n";
+        }
+        frontmatter += "---\n\n";
+
+        // Create the full markdown content
+        var markdownContent = frontmatter + content;
+
+        // Generate filename from title
+        var fileName = string.Join("-", title.ToLowerInvariant().Split(' ', '-', '_'))
+            .Replace("--", "-")
+            .Trim('-') + ".md";
+        var filePath = Path.Combine(_knowledgeFolderPath, fileName);
+
+        // Ensure directory exists
+        Directory.CreateDirectory(_knowledgeFolderPath);
+
+        // Write the file
+        await File.WriteAllTextAsync(filePath, markdownContent);
+
+        // Parse and return the document
+        var document = await ParseDocumentFromFileAsync(filePath);
+        if (document == null)
+        {
+            throw new InvalidOperationException($"Failed to parse created document at {filePath}");
+        }
+
+        return document;
+    }
 }

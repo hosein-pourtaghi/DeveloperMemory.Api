@@ -49,4 +49,21 @@ public class KnowledgeController : ControllerBase
         
         return Ok(document);
     }
+
+    [HttpPost]
+    public async Task<ActionResult<KnowledgeDocument>> CreateDocument([FromBody] CreateDocumentRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Title) || string.IsNullOrWhiteSpace(request.Content))
+        {
+            return BadRequest("Title and content are required");
+        }
+
+        var document = await _knowledgeService.CreateDocumentAsync(
+            request.Title,
+            request.Content,
+            request.Project,
+            request.Tags);
+
+        return Ok(document);
+    }
 }

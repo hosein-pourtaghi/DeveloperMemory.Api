@@ -46,7 +46,7 @@ POST {{DeveloperMemory.Api_HostAddress}}/v1/chat/completions
 Content-Type: application/json
 
 {
-  "model": "gpt-3.5-turbo",
+  "model": "auto",
   "messages": [
     { "role": "system", "content": "You are a helpful assistant." },
     { "role": "user", "content": "How do I use dependency injection in .NET?" }

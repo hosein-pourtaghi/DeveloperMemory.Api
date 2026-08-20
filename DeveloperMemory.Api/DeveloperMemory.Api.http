@@ -1,6 +1,62 @@
-@DeveloperMemory.Api_HostAddress = http://localhost:5041
+@DeveloperMemory.Api_HostAddress = https://localhost:7144
 
-GET {{DeveloperMemory.Api_HostAddress}}/weatherforecast/
+### Health Check
+GET {{DeveloperMemory.Api_HostAddress}}/health
 Accept: application/json
 
-###
+### Search Documents
+GET {{DeveloperMemory.Api_HostAddress}}/api/Knowledge?query=dotnet&project=MyApp&tags=logging
+Accept: application/json
+
+### Get All Documents
+GET {{DeveloperMemory.Api_HostAddress}}/api/Knowledge/documents
+Accept: application/json
+
+### Get Document by ID
+GET {{DeveloperMemory.Api_HostAddress}}/api/Knowledge/{{documentId}}
+Accept: application/json
+
+### Reindex Documents
+POST {{DeveloperMemory.Api_HostAddress}}/api/Knowledge/reindex
+Accept: application/json
+
+### Get All Profiles
+GET {{DeveloperMemory.Api_HostAddress}}/api/Profiles
+Accept: application/json
+
+### Load Profile
+POST {{DeveloperMemory.Api_HostAddress}}/api/Profiles
+Content-Type: application/json
+
+"./Profiles/jane-smith.md"
+
+### AI Proxy Query
+POST {{DeveloperMemory.Api_HostAddress}}/api/Proxy
+Content-Type: application/json
+
+{
+  "query": "How do I configure Serilog?",
+  "project": "MyApp",
+  "tags": ["logging", "dotnet"],
+  "systemPrompt": "You are a helpful .NET assistant."
+}
+
+### OpenAI-Compatible Chat Completion
+POST {{DeveloperMemory.Api_HostAddress}}/v1/chat/completions
+Content-Type: application/json
+
+{
+  "model": "gpt-3.5-turbo",
+  "messages": [
+    { "role": "system", "content": "You are a helpful assistant." },
+    { "role": "user", "content": "How do I use dependency injection in .NET?" }
+  ],
+  "temperature": 0.7,
+  "max_tokens": 150,
+  "project": "MyApp",
+  "tags": ["dotnet"]
+}
+
+### List Models
+GET {{DeveloperMemory.Api_HostAddress}}/v1/models
+Accept: application/json

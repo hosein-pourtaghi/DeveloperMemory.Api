@@ -1,61 +1,90 @@
-# Knowledge Format
+# Knowledge Format — YAML Frontmatter Reference
 
-## Document Structure
+Both knowledge documents and developer profiles use Markdown files with YAML frontmatter. The parser extracts metadata from the frontmatter block and uses the remaining content as the body.
 
-All knowledge documents are stored as Markdown files with YAML frontmatter at the top of the file.
+## Document Format
 
-### YAML Frontmatter
-
-```yaml
----
-title: "Document Title"
-description: "Brief description of the document"
-category: "Category Name"
-tags: ["tag1", "tag2", "tag3"]
-author: "Author Name"
-created_at: "2026-01-01T00:00:00Z"
-updated_at: "2026-01-01T00:00:00Z"
----
-```
-
-### Required Fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `title` | string | Unique title of the document |
-| `description` | string | Brief summary of the document content |
-| `category` | string | Category classification |
-| `tags` | array of strings | Relevant tags for indexing and filtering |
-| `author` | string | Author of the document |
-
-### Example
+**Location:** `Knowledge/` directory (configurable via `AppSettings:Paths:KnowledgeFolder`)
 
 ```markdown
 ---
-title: "Developer Profile Template"
-description: "Template for creating developer profiles"
-category: "Profiles"
-tags: ["developer", "profile", "template"]
-author: "System Admin"
-created_at: "2026-01-15T10:30:00Z"
-updated_at: "2026-06-01T14:20:00Z"
+title: "How to Configure Serilog"
+project: "MyApp"
+tags: logging, dotnet, configuration
 ---
 
-# Developer Profile
+# How to Configure Serilog
 
-## Overview
-This is a template for creating developer profiles...
+## Installation
 
-## Skills
-- Language: Python
-- Framework: .NET
-- Experience: 5 years
+Install the NuGet package...
 
-## Contact Information
-- Email: developer@example.com
-- Location: San Francisco, CA
+## Configuration
+
+Add to `Program.cs`...
 ```
 
-## Indexing
+### Supported Frontmatter Fields
 
-Documents are automatically indexed for search using the `tags` and `category` fields. The `title` and `description` are also used for relevance scoring.
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `title` | string | No | Document title. Falls back to filename if omitted. |
+| `project` | string | No | Project name for filtering. Empty string if omitted. |
+| `tags` | string | No | Comma-separated tags (e.g., `logging, dotnet`). Empty list if omitted. |
+
+### Important Notes
+
+- Tags are a **single comma-separated string**, not a YAML array: `tags: logging, dotnet` ✅ — `tags: [logging, dotnet]` ❌
+- The frontmatter parser splits on `:` and uses the **first two segments only**. Values containing `:` will be truncated.
+- Files without valid frontmatter are still loaded — `title` defaults to the filename, `project` and `tags` are empty.
+- Only `.md` files are loaded.
+
+---
+
+## Profile Format
+
+**Location:** `Profiles/` directory (configurable via `AppSettings:Paths:ProfilesFolder`)
+
+```markdown
+---
+name: Jane Smith
+role: Senior Backend Developer
+skills: C#, ASP.NET Core, Docker, PostgreSQL
+experience: 8 years
+---
+
+# Jane Smith
+
+Senior backend developer specializing in .NET ecosystem...
+```
+
+### Supported Frontmatter Fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | No | Developer's name |
+| `role` | string | No | Professional role/title |
+| `skills` | string | No | Comma-separated skills list |
+| `experience` | string | No | Years or description of experience |
+
+### Important Notes
+
+- Skills are a **single comma-separated string**: `skills: C#, Docker, Git` ✅
+- The body (after frontmatter) becomes the `Bio` field
+- Files without valid frontmatter (missing `---` delimiters) are skipped and return `null`
+- Only `.md` files are loaded
+
+---
+
+## Relevance Scoring
+
+When searching documents, relevance is calculated using keyword matching:
+
+| Match Location | Score |
+|---|---|
+| Title contains query | +0.5 |
+| Content contains query | +0.3 |
+| Project contains query | +0.1 |
+| Each matching tag | +0.1 |
+
+Results are sorted by score in descending order.

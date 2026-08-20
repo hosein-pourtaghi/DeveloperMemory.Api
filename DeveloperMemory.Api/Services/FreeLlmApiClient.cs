@@ -39,6 +39,25 @@ public class FreeLlmApiClient
     }
 
     /// <summary>
+    /// Builds a full endpoint URL from the configured BaseUrl and an endpoint path.
+    /// Handles both cases: BaseUrl ending with /v1 and BaseUrl ending with /v1/something.
+    /// Example: BaseUrl="http://localhost:3001/v1", endpoint="/chat/completions"
+    ///       → "http://localhost:3001/v1/chat/completions"
+    /// </summary>
+    private string BuildEndpointUrl(string endpoint)
+    {
+        var baseUrl = _appSettings.FreeLlmApi.BaseUrl.TrimEnd('/');
+        // If BaseUrl already ends with the endpoint, return as-is (idempotent)
+        if (baseUrl.EndsWith(endpoint, StringComparison.OrdinalIgnoreCase))
+            return baseUrl;
+        // If BaseUrl ends with /v1, just append the endpoint
+        if (baseUrl.EndsWith("/v1", StringComparison.OrdinalIgnoreCase))
+            return $"{baseUrl}{endpoint}";
+        // Otherwise treat BaseUrl as the root and build /v1 + endpoint
+        return $"{baseUrl}/v1{endpoint}";
+    }
+
+    /// <summary>
     /// Resolves the model to use for a request.
     /// Priority: per-request override > configured DefaultModel > "auto".
     /// </summary>
@@ -87,10 +106,12 @@ public class FreeLlmApiClient
             Encoding.UTF8,
             "application/json");
 
-        _logger.LogInformation("Sending request to FreeLLM: model={Model}, temperature={Temp}, maxTokens={MaxTokens}",
-            request.Model, request.Temperature, request.MaxTokens);
+        var endpointUrl = BuildEndpointUrl("/chat/completions");
 
-        var response = await _httpClient.PostAsync(_appSettings.FreeLlmApi.BaseUrl, content, cancellationToken);
+        _logger.LogInformation("Sending request to FreeLLM: url={Url}, model={Model}, temperature={Temp}, maxTokens={MaxTokens}",
+            endpointUrl, request.Model, request.Temperature, request.MaxTokens);
+
+        var response = await _httpClient.PostAsync(endpointUrl, content, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -108,7 +129,7 @@ public class FreeLlmApiClient
         }
         catch (JsonException ex)
         {
-            _logger.LogError(ex, "Failed to deserialize FreeLlm API response");
+            _logger.LogError(ex, "Failed to deserialize FreeLlm API response. Raw response: {Response}", responseContent.Length > 500 ? responseContent[..500] : responseContent);
             throw;
         }
     }
@@ -146,8 +167,7 @@ public class FreeLlmApiClient
 
         try
         {
-            var baseUri = new Uri(_appSettings.FreeLlmApi.BaseUrl);
-            var modelsUrl = $"{baseUri.Scheme}://{baseUri.Host}:{baseUri.Port}/v1/models";
+            var modelsUrl = BuildEndpointUrl("/models");
 
             var response = await _httpClient.GetAsync(modelsUrl, cancellationToken);
 

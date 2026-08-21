@@ -1,57 +1,58 @@
 # Changelog
 
+## [2.1.0] - 2026-08-21
+
+### Auto Model Selection
+- **Mode detection**: Automatically detects Cline's plan vs build mode from system prompt analysis
+- **Plan mode**: Routes to `auto:smart` for complex reasoning, architecture, and planning tasks
+- **Build mode**: Routes to `auto:fast` for code implementation and tool execution tasks
+- **Configurable**: `AppSettings:ModelSelection` section with `AutoSelectModel`, `PlanModel`, `BuildModel`
+- **Override**: Set `AutoSelectModel: false` to let the client control model selection
+
+### Token Tracking
+- **Token estimation**: Estimates token counts at each pipeline stage (~4 chars/token heuristic)
+- **Three-stage logging**: incoming → enriched → response tokens logged for every request
+- **Provider tokens**: Actual token counts from the provider (if available in response)
+- **Enrichment overhead**: Shows how many tokens DeveloperMemory adds to each request
+- **File logging**: Daily log files at `logs/requests/requests-YYYY-MM-DD.log`
+- **Console logging**: TokenSummary lines in Serilog console output
+
+### Multimodal Content Support
+- **MessageContentConverter**: Custom JSON converter handles both string and array `content` fields
+- Cline's tool result messages with content arrays now deserialize correctly
+- Array content is preserved as JSON string and forwarded to downstream provider
+
+### Model Validation Error Handling
+- **InvalidModelStateResponseFactory**: ASP.NET model validation errors now return OpenAI-compatible error JSON instead of empty 400 body
+- Request body deserialization errors show the actual reason
+
+### Request Logging Middleware
+- **RequestLoggingMiddleware**: Diagnostic middleware logs raw request bodies for `/v1/*` POST endpoints
+- Helps debug client compatibility issues
+
 ## [2.0.0] - 2026-08-21
 
 ### Major Changes
-- **Streaming support**: Full SSE streaming for `/v1/chat/completions` — response streams directly from downstream provider to client without buffering
-- **Preserved conversation history**: PromptBuilder now preserves the original multi-turn message structure; DeveloperMemory context is injected into the system message without flattening conversations
-- **Removed redundant ProxyController**: `/api/Proxy` endpoint removed — use `/v1/chat/completions` instead
-- **Removed unused ServiceCollectionExtensions**: Dead code cleaned up
+- **Streaming support**: Full SSE streaming for `/v1/chat/completions`
+- **Preserved conversation history**: PromptBuilder preserves multi-turn message structure
+- **Removed redundant ProxyController**: Use `/v1/chat/completions` instead
+- **Removed unused ServiceCollectionExtensions**: Dead code cleanup
 
 ### OpenAI-Compatible Improvements
-- **Complete request model**: Added `top_p`, `frequency_penalty`, `presence_penalty`, `stop`, `n`, `user`, `stream_options`, `max_completion_tokens` to the request model
-- **Streaming response models**: Added `ChatCompletionChunk` and `ChunkChoice` for SSE format
-- **OpenAI-compatible error responses**: All `/v1/*` errors return `{ error: { message, type, code, param } }` format
-- **Model lookup endpoint**: Added `GET /v1/models/{modelId}` for individual model retrieval
-- **Fallback model listing**: `/v1/models` returns configured default model when upstream is unavailable
-- **JsonExtensionData support**: Unknown client properties are forwarded to downstream provider without data loss
-- **Tool call message support**: `Message` model now includes `tool_calls`, `tool_call_id`, `name` fields
+- Complete request model with all standard OpenAI parameters
+- Streaming response models (ChatCompletionChunk)
+- OpenAI-compatible error responses for all `/v1/*` endpoints
+- Model lookup endpoint (GET /v1/models/{modelId})
+- JsonExtensionData support for forwarding unknown fields
 
 ### Architecture
-- **GlobalExceptionMiddleware**: Catches unhandled exceptions and returns appropriate error responses (OpenAI-compatible for `/v1/*`, problem details for others)
-- **DownstreamProviderException**: Structured exception type for downstream provider HTTP errors with status code and raw content
-- **Provider-agnostic design**: FreeLlmApiClient works with any OpenAI-compatible provider, not just FreeLLM
-
-### Security & Configuration
-- **Removed hardcoded API key** from `appsettings.json` — use environment variables for secrets
-- **Fixed port mismatch**: launchSettings.json now uses port 5041 (HTTP) and 7144 (HTTPS), matching documentation
-- **Added HTTPS profile**: launchSettings.json includes both HTTP and HTTPS profiles
-
-### Prompt Enrichment
-- **Instruction precedence**: Client system message > DeveloperMemory profile > Knowledge context > User messages
-- **Knowledge context limits**: Top 5 relevant documents included, content truncated to 500 chars each
-- **Profile context**: Name, role, skills, experience, bio included in system message
-- **Non-standard fields preserved**: `project`, `tags`, `profile_id` extensions continue to work
-
-### Documentation
-- Updated README.md with Cline integration guide and streaming documentation
-- Updated CLAUDE.md with complete API reference, architecture, and configuration
-- Updated AGENTS.md with new project structure and coding conventions
-- Updated DeveloperMemory.Api.http with streaming examples and model lookup
+- GlobalExceptionMiddleware for global error handling
+- DownstreamProviderException for structured provider errors
+- Provider-agnostic FreeLlmApiClient
 
 ## [1.1.0] - 2026-08-19
-- Consolidated documentation into 4 core files: README.md, CLAUDE.md, AGENTS.md, KNOWLEDGE_FORMAT.md
-- Deleted 8 redundant docs: API.md, API_SPECIFICATION.md, DOCUMENTATION.md, DATA_MODELS.md, CONFIGURATION.md, ERROR_HANDLING.md, CONTRIBUTING.md, PROJECT_SUMMARY.md
-- Rewrote CLAUDE.md as comprehensive project reference (architecture, API, models, config, error handling)
-- Created AGENTS.md with AI agent coding standards, extension patterns, and gotchas
-- Fixed KNOWLEDGE_FORMAT.md to accurately reflect actual code parser fields (title, project, tags)
-- Fixed DeveloperMemory.Api.http with real project endpoints (was referencing weatherforecast)
-- Updated README.md with accurate links and port numbers
+- Consolidated documentation into 4 core files
+- Rewrote CLAUDE.md as comprehensive project reference
 
 ## [1.0.0] - 2026-08-14
-- Initial documentation overhaul completed
-- Created README.md with overview and quick start guide
-- Separated architecture and API documentation
-- Defined knowledge format in KNOWLEDGE_FORMAT.md
-- Added AGENTS.md for coding standards
-- Created CONTRIBUTING.md with contribution guidelines
+- Initial documentation overhaul

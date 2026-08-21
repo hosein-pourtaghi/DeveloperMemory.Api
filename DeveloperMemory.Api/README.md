@@ -11,6 +11,8 @@ IDE AI Client / Cline
         ↓
 DeveloperMemory.Api  (OpenAI-compatible gateway)
         ↓
+Mode Detection (Plan vs Build) → Auto Model Selection
+        ↓
 Developer Profile + Knowledge Retrieval + Prompt Enrichment
         ↓
 OpenAI-Compatible Provider (FreeLLM, OpenAI, etc.)
@@ -39,10 +41,55 @@ Configure Cline (or any OpenAI-compatible client) with:
 | Setting | Value |
 |---|---|
 | API Base URL | `http://localhost:5041/v1` |
-| Model | `auto` (or any model your provider supports) |
-| API Key | Your provider's API key (if required) |
+| Model | Any value (gateway auto-selects based on mode) |
+| API Key | Any value (not validated) |
 
-Cline sends standard OpenAI chat completion requests. DeveloperMemory enriches them with your developer profile and relevant knowledge before forwarding to the configured LLM provider. Streaming responses are passed through transparently.
+The gateway automatically detects whether Cline is in **plan mode** (reasoning/analysis) or **build mode** (code implementation) and routes to the best model for each task.
+
+## Auto Model Selection
+
+When `AutoSelectModel` is enabled, the gateway ignores the client's requested model and selects the optimal model based on detected mode:
+
+| Mode | Detection | Default Model | Purpose |
+|---|---|---|---|
+| **Plan** | System prompt contains planning indicators (`# TASK`, `Checklist`, `Goal:`) | `auto:smart` | Complex reasoning, architecture planning |
+| **Build** | System prompt contains tool definitions (`execute_command`, `write_to_file`) | `auto:fast` | Code implementation, tool execution |
+| **Unknown** | No recognizable indicators | Falls back to configured `DefaultModel` | General queries |
+
+Configure in `appsettings.json`:
+```json
+{
+  "AppSettings": {
+    "ModelSelection": {
+      "AutoSelectModel": true,
+      "PlanModel": "auto:smart",
+      "BuildModel": "auto:fast"
+    }
+  }
+}
+```
+
+Set `AutoSelectModel: false` to let the client control model selection.
+
+## Token Tracking
+
+Every request is logged with token metrics at three stages for comparison:
+
+```
+TokenSummary: incoming=~1234 | enriched=~1567 | response=~456 | provider=456 | enrichment_overhead=~333 tokens
+```
+
+| Metric | Description |
+|---|---|
+| `incoming_tokens` | Estimated tokens in Cline's original request |
+| `enriched_tokens` | Estimated tokens after DeveloperMemory adds profile + knowledge context |
+| `response_tokens` | Estimated tokens in the LLM response |
+| `provider_tokens` | Actual token count reported by the provider (if available) |
+| `enrichment_overhead` | `enriched - incoming` — the cost of added context |
+
+Logs are written to:
+- **Console**: Via Serilog (look for `TokenSummary:` lines)
+- **File**: `logs/requests/requests-YYYY-MM-DD.log` (daily files)
 
 ## OpenAI-Compatible Endpoints
 
@@ -67,30 +114,12 @@ Cline sends standard OpenAI chat completion requests. DeveloperMemory enriches t
 
 ## Streaming Support
 
-DeveloperMemory fully supports OpenAI-compatible streaming via Server-Sent Events (SSE). When a client requests `stream: true`, the response from the downstream provider is forwarded directly to the client without buffering. This ensures low-latency token-by-token delivery for coding assistants.
-
-## Memory and Prompt Enrichment
-
-DeveloperMemory enriches requests using:
-
-1. **Developer Profiles** — Your name, role, skills, experience, and coding philosophy
-2. **Knowledge Documents** — Technical documentation stored as Markdown files with YAML frontmatter
-3. **Relevant Memory** — Automatically retrieved based on the user's query using keyword relevance scoring
-
-Enriched context is injected into the system message, preserving the original conversation history. Client system messages are preserved and extended, not replaced.
-
-## Tech Stack
-
-- **Framework**: .NET 10.0 / ASP.NET Core
-- **Logging**: Serilog (console + rolling file)
-- **API Docs**: Swashbuckle / OpenAPI
-- **Data Format**: Markdown with YAML frontmatter
-- **External**: OpenAI-compatible LLM API proxy
+DeveloperMemory fully supports OpenAI-compatible streaming via Server-Sent Events (SSE). When a client requests `stream: true`, the response from the downstream provider is forwarded directly to the client without buffering.
 
 ## Documentation
 
-- **[CLAUDE.md](CLAUDE.md)** — Complete project reference: architecture, API docs, data models, configuration, and error handling
-- **[AGENTS.md](AGENTS.md)** — AI agent coding guide: standards, extension patterns, gotchas, and contribution workflow
+- **[CLAUDE.md](CLAUDE.md)** — Complete project reference: architecture, API docs, data models, configuration
+- **[AGENTS.md](AGENTS.md)** — AI agent coding guide: standards, extension patterns, gotchas
 - **[KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md)** — YAML frontmatter format for documents and profiles
 
 ## License

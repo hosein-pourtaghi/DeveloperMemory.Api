@@ -1,7 +1,7 @@
 ---
 name: Developer
+scope: global
 role: Full-Stack Developer
-skills: C#, ASP.NET Core, .NET 10, TypeScript, React, Docker, PostgreSQL, Redis
 experience: 5+ years
 ---
 
@@ -9,22 +9,33 @@ experience: 5+ years
 
 Full-stack developer with deep expertise in the .NET ecosystem and modern web technologies.
 
-## Primary Stack
-- **Backend**: C# / ASP.NET Core / .NET 10
-- **Frontend**: TypeScript / React / Next.js
-- **Database**: PostgreSQL / Entity Framework Core
-- **DevOps**: Docker / GitHub Actions
+## Backend
 
-## Current Projects
-- **DeveloperMemory**: Knowledge management API for enriching AI assistant prompts with project context
-- **FreeLLM Integration**: Connecting local LLM inference to development workflows
+- C# / ASP.NET Core
+- REST APIs and OpenAI-compatible API design
+- Dependency injection, service-oriented architecture
+- Entity Framework Core, SQL databases
 
-## Development Philosophy
-- Prefer clean, readable code over clever solutions
-- Use dependency injection and testable patterns
-- Document decisions and architectural choices
-- Keep dependencies minimal and well-maintained
+## Frontend
 
-## AI Tooling
-- Uses Cline in VS Code for AI-assisted coding
-- DeveloperMemory acts as a personal knowledge layer that enriches prompts with project-specific context before forwarding to the LLM
+- TypeScript / React / Next.js
+- VS Code extension ecosystem
+
+## Data
+
+- PostgreSQL, SQL Server
+- Redis
+- JSON-based configuration and document storage
+
+## DevOps
+
+- Docker / containerization
+- GitHub Actions
+- CI/CD pipelines
+
+## Technical Interests
+
+- AI-assisted development tooling
+- Developer productivity systems
+- API gateway and middleware patterns
+- Knowledge management for AI workflows

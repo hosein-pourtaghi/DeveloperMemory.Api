@@ -2,6 +2,8 @@ using DeveloperMemory.Api.Models;
 using DeveloperMemory.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using DeveloperMemory.Api.Infrastructure.Configuration;
 using System;
 using System.IO;
 using System.Linq;
@@ -19,6 +21,8 @@ public class OpenAIChatCompletionController : ControllerBase
     private readonly PromptBuilder _promptBuilder;
     private readonly KnowledgeService _knowledgeService;
     private readonly ProfileService _profileService;
+    private readonly RequestLogger _requestLogger;
+    private readonly ModelSelectionSettings _modelSelection;
     private readonly ILogger<OpenAIChatCompletionController> _logger;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -32,24 +36,22 @@ public class OpenAIChatCompletionController : ControllerBase
         PromptBuilder promptBuilder,
         KnowledgeService knowledgeService,
         ProfileService profileService,
+        RequestLogger requestLogger,
+        IOptions<ModelSelectionSettings> modelSelection,
         ILogger<OpenAIChatCompletionController> logger)
     {
         _providerClient = providerClient;
         _promptBuilder = promptBuilder;
         _knowledgeService = knowledgeService;
         _profileService = profileService;
+        _requestLogger = requestLogger;
+        _modelSelection = modelSelection.Value;
         _logger = logger;
     }
 
-    /// <summary>
-    /// POST /v1/chat/completions — OpenAI-compatible chat completion endpoint.
-    /// Supports both streaming and non-streaming responses.
-    /// Enriches requests with DeveloperMemory context (profiles + knowledge) before forwarding.
-    /// </summary>
     [HttpPost("chat/completions")]
     public async Task ChatCompletions([FromBody] OpenAIChatCompletionRequest request, CancellationToken cancellationToken)
     {
-        // Validate basic request
         if (request == null || request.Messages == null || request.Messages.Count == 0)
         {
             await WriteErrorResponse(HttpContext, StatusCodes.Status400BadRequest,
@@ -57,7 +59,6 @@ public class OpenAIChatCompletionController : ControllerBase
             return;
         }
 
-        // Check if provider is configured
         if (!_providerClient.IsConfigured)
         {
             await WriteErrorResponse(HttpContext, StatusCodes.Status503ServiceUnavailable,
@@ -66,30 +67,82 @@ public class OpenAIChatCompletionController : ControllerBase
             return;
         }
 
+        var isStreaming = request.Stream == true;
+        var incomingTokens = TokenEstimator.EstimateRequestTokens(request);
+
+        // ── Step 1: Log incoming request ──
+        await _requestLogger.LogRequestAsync(
+            "INCOMING",
+            request,
+            incomingTokens: incomingTokens,
+            isStreaming: isStreaming);
+
         try
         {
-            // ── Step 1: Extract context for memory retrieval ──
+            // ── Step 2: Detect mode and select model ──
+            var mode = ModeDetector.DetectMode(request);
+            string selectedModel;
+
+            if (_modelSelection.AutoSelectModel)
+            {
+                selectedModel = mode switch
+                {
+                    ModeDetector.TaskMode.Plan => _modelSelection.PlanModel,
+                    ModeDetector.TaskMode.Build => _modelSelection.BuildModel,
+                    _ => _providerClient.ResolveModel(request.Model)
+                };
+            }
+            else
+            {
+                selectedModel = _providerClient.ResolveModel(request.Model);
+            }
+
+            // Apply the selected model to the request
+            request.Model = selectedModel;
+
+            _logger.LogInformation(
+                "Mode detected: {Mode} | Selected model: {Model} | AutoSelect: {AutoSelect}",
+                mode, selectedModel, _modelSelection.AutoSelectModel);
+
+            // ── Step 3: Load developer profile and search knowledge ──
             var lastUserMessage = request.Messages.LastOrDefault(m => m.Role == "user");
             var searchQuery = lastUserMessage?.Content;
 
-            // ── Step 2: Load developer profile and search knowledge ──
             var profiles = await _profileService.LoadProfilesAsync();
             var searchResults = !string.IsNullOrWhiteSpace(searchQuery)
                 ? _knowledgeService.SearchDocuments(searchQuery, request.Project, request.Tags)
                 : new List<SearchResult>();
 
-            // ── Step 3: Build enriched request (preserves conversation history) ──
+            // ── Step 4: Build enriched request (preserves conversation history) ──
             var enrichedRequest = _promptBuilder.BuildEnrichedRequest(request, profiles, searchResults);
+            var enrichedTokens = TokenEstimator.EstimateRequestTokens(enrichedRequest);
 
-            // ── Step 4: Forward to downstream provider ──
-            if (request.Stream == true)
+            // ── Step 5: Log enriched request ──
+            await _requestLogger.LogRequestAsync(
+                "ENRICHED",
+                enrichedRequest,
+                selectedModel: selectedModel,
+                incomingTokens: incomingTokens,
+                enrichedTokens: enrichedTokens,
+                isStreaming: isStreaming);
+
+            // ── Step 6: Forward to downstream provider ──
+            var startTime = DateTime.UtcNow;
+
+            if (isStreaming)
             {
                 await HandleStreamingRequest(enrichedRequest, cancellationToken);
             }
             else
             {
-                await HandleNonStreamingRequest(enrichedRequest, cancellationToken);
+                await HandleNonStreamingRequest(enrichedRequest, selectedModel, incomingTokens, enrichedTokens, cancellationToken);
             }
+
+            var latencyMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
+
+            _logger.LogInformation(
+                "Request completed | mode={Mode} | model={Model} | incoming={Incoming} | enriched={Enriched} | latency={Latency}ms",
+                mode, selectedModel, incomingTokens, enrichedTokens, latencyMs);
         }
         catch (DownstreamProviderException ex)
         {
@@ -99,7 +152,6 @@ public class OpenAIChatCompletionController : ControllerBase
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // Client disconnected — this is normal, don't log as error
             _logger.LogDebug("Chat completion request was cancelled by client");
         }
         catch (Exception ex)
@@ -110,37 +162,54 @@ public class OpenAIChatCompletionController : ControllerBase
         }
     }
 
-    // ── Non-Streaming Handler ──────────────────────────────────────────────
-
     private async Task HandleNonStreamingRequest(
-        OpenAIChatCompletionRequest enrichedRequest, CancellationToken cancellationToken)
+        OpenAIChatCompletionRequest enrichedRequest,
+        string selectedModel,
+        int incomingTokens,
+        int enrichedTokens,
+        CancellationToken cancellationToken)
     {
+        var startTime = DateTime.UtcNow;
         var response = await _providerClient.SendCompletionAsync(enrichedRequest, cancellationToken);
+        var latencyMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
 
-        // Ensure response has the model field set
         if (string.IsNullOrEmpty(response.Model))
         {
-            response.Model = enrichedRequest.Model ?? "unknown";
+            response.Model = selectedModel;
         }
+
+        var responseTokens = TokenEstimator.EstimateResponseTokens(response);
+        var providerTokens = response.Usage?.TotalTokens;
+
+        // Log response with full metrics
+        await _requestLogger.LogRequestAsync(
+            "RESPONSE",
+            enrichedRequest,
+            selectedModel: selectedModel,
+            incomingTokens: incomingTokens,
+            enrichedTokens: enrichedTokens,
+            responseTokens: responseTokens,
+            providerTokens: providerTokens,
+            latencyMs: latencyMs,
+            isStreaming: false);
+
+        _logger.LogWarning(
+            "TokenSummary: incoming=~{Incoming} | enriched=~{Enriched} | response=~{Response} | provider={Provider} | enrichment_overhead=~{Overhead} tokens",
+            incomingTokens, enrichedTokens, responseTokens, providerTokens, enrichedTokens - incomingTokens);
 
         Response.ContentType = "application/json";
         await JsonSerializer.SerializeAsync(Response.Body, response, JsonOptions, cancellationToken);
     }
 
-    // ── Streaming Handler ──────────────────────────────────────────────────
-
     private async Task HandleStreamingRequest(
         OpenAIChatCompletionRequest enrichedRequest, CancellationToken cancellationToken)
     {
-        // Set SSE headers
         Response.ContentType = "text/event-stream";
         Response.Headers["Cache-Control"] = "no-cache";
         Response.Headers["Connection"] = "keep-alive";
-        Response.Headers["X-Accel-Buffering"] = "no"; // Disable nginx buffering
+        Response.Headers["X-Accel-Buffering"] = "no";
 
         using var providerResponse = await _providerClient.SendStreamingCompletionAsync(enrichedRequest, cancellationToken);
-
-        // Stream the response body directly to the client
         var providerStream = await providerResponse.Content.ReadAsStreamAsync(cancellationToken);
         var writer = new StreamWriter(Response.Body, encoding: System.Text.Encoding.UTF8, bufferSize: 8192, leaveOpen: true);
 
@@ -155,7 +224,6 @@ public class OpenAIChatCompletionController : ControllerBase
                 await writer.WriteLineAsync(line);
                 await writer.FlushAsync(cancellationToken);
 
-                // If the line is "data: [DONE]", we're done
                 if (line.StartsWith("data: [DONE]"))
                     break;
             }
@@ -166,12 +234,8 @@ public class OpenAIChatCompletionController : ControllerBase
         }
     }
 
-    // ── Model Endpoints ────────────────────────────────────────────────────
+    // ── Model Endpoints ──
 
-    /// <summary>
-    /// GET /v1/models — List available models from the upstream provider.
-    /// Falls back to a default model list if the upstream provider is unavailable.
-    /// </summary>
     [HttpGet("models")]
     public async Task<ActionResult<OpenAIModelListResponse>> GetModels(CancellationToken cancellationToken)
     {
@@ -198,7 +262,6 @@ public class OpenAIChatCompletionController : ControllerBase
             _logger.LogWarning(ex, "Could not fetch models from upstream provider");
         }
 
-        // Fallback: return at least the configured default model
         var defaultModel = _providerClient.ResolveModel(null);
         var fallbackList = new OpenAIModelListResponse
         {
@@ -216,9 +279,6 @@ public class OpenAIChatCompletionController : ControllerBase
         return Ok(fallbackList);
     }
 
-    /// <summary>
-    /// GET /v1/models/{modelId} — Retrieve details for a specific model.
-    /// </summary>
     [HttpGet("models/{modelId}")]
     public async Task<ActionResult<OpenAIModel>> GetModel(string modelId, CancellationToken cancellationToken)
     {
@@ -247,7 +307,7 @@ public class OpenAIChatCompletionController : ControllerBase
         });
     }
 
-    // ── Error Helpers ──────────────────────────────────────────────────────
+    // ── Error Helpers ──
 
     private static async Task WriteErrorResponse(HttpContext context, int statusCode, string message, string errorType, string? param = null)
     {

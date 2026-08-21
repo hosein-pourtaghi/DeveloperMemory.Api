@@ -15,7 +15,6 @@ builder.Host.UseSerilog((context, services) =>
 builder.Services.AddControllers()
     .ConfigureApiBehaviorOptions(options =>
     {
-        // Replace ASP.NET's default 400 response with OpenAI-compatible error format
         options.InvalidModelStateResponseFactory = context =>
         {
             var errors = context.ModelState
@@ -65,13 +64,15 @@ builder.Services.AddSwaggerGen(c =>
     }
 });
 
-// Configure AppSettings
+// Configure strongly-typed settings
 builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AppSettings"));
+builder.Services.Configure<ModelSelectionSettings>(builder.Configuration.GetSection("AppSettings:ModelSelection"));
 
 // Register services
 builder.Services.AddSingleton<ProfileService>();
 builder.Services.AddSingleton<KnowledgeService>();
 builder.Services.AddSingleton<PromptBuilder>();
+builder.Services.AddSingleton<RequestLogger>();
 builder.Services.AddHttpClient<FreeLlmApiClient>();
 
 // Add CORS
@@ -87,7 +88,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Diagnostic: log incoming request bodies for /v1/* (remove after debugging)
+// Diagnostic: log incoming request bodies for /v1/*
 app.UseMiddleware<RequestLoggingMiddleware>();
 
 // Global exception handler
@@ -106,7 +107,6 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-//app.UseHttpsRedirection();
 app.UseCors("AllowAll");
 app.UseAuthorization();
 app.MapControllers();

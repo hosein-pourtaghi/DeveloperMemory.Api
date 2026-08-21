@@ -1,4 +1,4 @@
-@DeveloperMemory.Api_HostAddress = https://localhost:7144
+@DeveloperMemory.Api_HostAddress = http://localhost:5041
 
 ### Health Check
 GET {{DeveloperMemory.Api_HostAddress}}/health
@@ -28,20 +28,9 @@ Accept: application/json
 POST {{DeveloperMemory.Api_HostAddress}}/api/Profiles
 Content-Type: application/json
 
-"./Profiles/jane-smith.md"
+"./Profiles/developer-profile.md"
 
-### AI Proxy Query
-POST {{DeveloperMemory.Api_HostAddress}}/api/Proxy
-Content-Type: application/json
-
-{
-  "query": "How do I configure Serilog?",
-  "project": "MyApp",
-  "tags": ["logging", "dotnet"],
-  "systemPrompt": "You are a helpful .NET assistant."
-}
-
-### OpenAI-Compatible Chat Completion
+### OpenAI-Compatible Chat Completion (Non-Streaming)
 POST {{DeveloperMemory.Api_HostAddress}}/v1/chat/completions
 Content-Type: application/json
 
@@ -52,11 +41,41 @@ Content-Type: application/json
     { "role": "user", "content": "How do I use dependency injection in .NET?" }
   ],
   "temperature": 0.7,
-  "max_tokens": 150,
+  "max_tokens": 2048,
   "project": "MyApp",
   "tags": ["dotnet"]
+}
+
+### OpenAI-Compatible Chat Completion (Streaming)
+POST {{DeveloperMemory.Api_HostAddress}}/v1/chat/completions
+Content-Type: application/json
+Accept: text/event-stream
+
+{
+  "model": "auto",
+  "messages": [
+    { "role": "user", "content": "Explain async/await in C#" }
+  ],
+  "temperature": 0.7,
+  "max_tokens": 2048,
+  "stream": true
 }
 
 ### List Models
 GET {{DeveloperMemory.Api_HostAddress}}/v1/models
 Accept: application/json
+
+### Get Model by ID
+GET {{DeveloperMemory.Api_HostAddress}}/v1/models/auto
+Accept: application/json
+
+### Create Knowledge Document
+POST {{DeveloperMemory.Api_HostAddress}}/api/Knowledge
+Content-Type: application/json
+
+{
+  "title": "My New Document",
+  "content": "# Document content here...",
+  "project": "MyProject",
+  "tags": ["dotnet", "api"]
+}

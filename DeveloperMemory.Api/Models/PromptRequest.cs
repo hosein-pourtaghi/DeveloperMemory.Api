@@ -10,12 +10,12 @@ public class PromptRequest
 
     /// <summary>
     /// Optional model override for this request.
-    /// Supports FreeLLM routing modes:
+    /// Supports routing modes depending on the configured provider:
     ///   "auto"       — Router picks the best available model (default if null)
     ///   "auto:fast"  — Router picks the fastest available model
     ///   "auto:smart" — Router picks the most capable available model
     ///   "fusion"     — Multiple models answer in parallel, a judge synthesizes one answer
-    ///   "gpt-4"      — Any explicit model ID from the FreeLLM catalog
+    ///   Any model ID — Pin to a specific model (e.g. "gpt-4", "gemini-3.5-flash")
     /// When null, uses the configured DefaultModel from appsettings.json.
     /// </summary>
     public string? Model { get; set; }

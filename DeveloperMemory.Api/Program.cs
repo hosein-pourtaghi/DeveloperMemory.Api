@@ -1,7 +1,8 @@
 using Serilog;
 using DeveloperMemory.Api.Services;
 using DeveloperMemory.Api.Infrastructure.Configuration;
-using DeveloperMemory.Api.Infrastructure.Extensions;
+using DeveloperMemory.Api.Infrastructure.Middleware;
+// RequestLoggingMiddleware is in the same namespace
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,7 +22,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "DeveloperMemory API",
         Version = "v1",
-        Description = "API for managing developer knowledge and profiles",
+        Description = "OpenAI-compatible Developer Memory Gateway — enriches AI requests with developer profiles, coding guidelines, and project knowledge.",
         Contact = new Microsoft.OpenApi.OpenApiContact
         {
             Name = "DeveloperMemory",
@@ -36,17 +37,6 @@ builder.Services.AddSwaggerGen(c =>
     {
         c.IncludeXmlComments(xmlPath);
     }
-
-    // Add JWT Bearer token support (Swashbuckle 7.x / .NET 10 style)
-    c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.OpenApiSecurityScheme
-    {
-        Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
-        Name = "Authorization",
-        In = Microsoft.OpenApi.ParameterLocation.Header,
-        Type = Microsoft.OpenApi.SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT"
-    });
 });
 
 // Configure AppSettings
@@ -71,6 +61,9 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// Global exception handler (must be first in pipeline)
+app.UseMiddleware<GlobalExceptionMiddleware>();
+
 // Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
@@ -78,9 +71,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "DeveloperMemory API v1");
-        c.RoutePrefix = "swagger"; // Serve Swagger UI at /swagger
+        c.RoutePrefix = "swagger";
         c.DocumentTitle = "DeveloperMemory API Documentation";
-        c.DefaultModelsExpandDepth(-1); // Hide models by default
+        c.DefaultModelsExpandDepth(-1);
     });
 }
 

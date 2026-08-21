@@ -2,28 +2,48 @@
 
 ## Project Overview
 
-Developer Memory API is a **.NET 10.0 Web API** that serves as a knowledge management system and AI assistant gateway. It enables developers to store/retrieve technical knowledge as Markdown files and query AI models with contextual awareness from those documents and developer profiles.
+DeveloperMemory.Api is an **OpenAI-compatible Developer Memory Gateway** built on .NET 10.0. It sits between AI coding assistants (Cline, Continue, etc.) and OpenAI-compatible LLM providers, enriching requests with persistent developer preferences, coding guidelines, project knowledge, and relevant long-term memory.
 
 **Core capabilities:**
+- Expose OpenAI-compatible `/v1/chat/completions` with full streaming support
+- Enrich requests with developer profiles and knowledge before forwarding
+- Preserve the original conversation history (multi-turn support)
+- Forward to any OpenAI-compatible downstream provider (FreeLLM, OpenAI, etc.)
 - Store and search technical documentation in Markdown with YAML frontmatter
-- Manage developer profiles with skills, experience, and roles
-- Proxy queries to external LLM APIs enriched with context from profiles and documents
-- Expose an **OpenAI-compatible `/v1/chat/completions`** endpoint
 
 ## Architecture
+
+### Request Flow
+
+```
+IDE AI Client / Cline
+        ↓
+DeveloperMemory.Api
+        ↓
+Request Validation / Normalization
+        ↓
+Load Developer Profile + Search Knowledge
+        ↓
+Prompt/Context Enrichment (preserves message history)
+        ↓
+OpenAI-Compatible Provider
+        ↓
+Streaming (SSE) or Standard Response
+        ↓
+IDE AI Client / Cline
+```
 
 ### Layered Architecture
 
 ```
-Presentation    →  Controllers (KnowledgeController, ProfilesController, ProxyController, OpenAIChatCompletionController)
+Presentation    →  Controllers (OpenAIChatCompletionController, KnowledgeController, ProfilesController)
+                  Middleware  (GlobalExceptionMiddleware)
 Application     →  Services (KnowledgeService, ProfileService, PromptBuilder, FreeLlmApiClient)
-Domain          →  Models (KnowledgeDocument, DeveloperProfile, PromptRequest, SearchResult, OpenAI* types)
-Infrastructure  →  Configuration (AppSettings), Extensions (ServiceCollectionExtensions), Logging (Serilog)
+Domain          →  Models (KnowledgeDocument, DeveloperProfile, SearchResult, OpenAI* types)
+Infrastructure  →  Configuration (AppSettings), Logging (Serilog)
 ```
 
-### Dependency Injection (Program.cs)
-
-All services are registered as **Singletons** (services load from filesystem and hold in-memory state):
+### Dependency Injection
 
 | Registration | Type | Lifetime |
 |---|---|---|
@@ -33,165 +53,47 @@ All services are registered as **Singletons** (services load from filesystem and
 | `FreeLlmApiClient` | HttpClient | Transient (via `AddHttpClient<T>`) |
 | `AppSettings` | Options | Bound from `appsettings.json` → `AppSettings` section |
 
-### Data Flow
+### Key Components
 
-**Document Search:**
-1. Markdown files in `Paths:KnowledgeFolder` are parsed on startup (`KnowledgeService.LoadDocumentsAsync()`)
-2. YAML frontmatter is extracted for metadata (`title`, `project`, `tags`)
-3. Content after frontmatter becomes the document body
-4. Search uses keyword matching with relevance scoring: title (0.5) > content (0.3) > project (0.1) > tags (0.1 each)
+**OpenAIChatCompletionController** — Thin controller handling `/v1/chat/completions`, `/v1/models`, and `/v1/models/{modelId}`. Delegates all business logic to services.
 
-**AI Proxy Query (`/api/Proxy`):**
-1. `PromptRequest` arrives with query, optional project/tags filter, optional profile ID, optional model override
-2. `ProfileService` loads all profiles from `Paths:ProfilesFolder`
-3. `KnowledgeService` searches documents matching query/project/tags
-4. `PromptBuilder` assembles: system prompt + profile context + search results + user query
-5. `FreeLlmApiClient` sends assembled prompt to the configured LLM API with resolved model
-6. LLM response is returned as-is
+**PromptBuilder** — Enriches OpenAI requests with developer profile and knowledge context. Uses `BuildEnrichedRequest()` which preserves the original conversation history and injects context into the system message. Legacy `BuildPrompt()` method retained for backward compatibility.
 
-**OpenAI-Compatible Endpoint (`/v1/chat/completions`):**
-1. Standard OpenAI chat completion request arrives with model/temperature/max_tokens
-2. Last user message is extracted as the search query
-3. Same context-enrichment flow as above (profiles + document search + prompt building)
-4. Model resolution: per-request `model` field → `DefaultModel` config → `"auto"`
-5. Response is mapped back to OpenAI response format (`OpenAIChatCompletionResponse`)
+**FreeLlmApiClient** — Provider-agnostic HTTP client for OpenAI-compatible APIs. Supports streaming (`SendStreamingCompletionAsync`) and non-streaming (`SendCompletionAsync`). Uses `ResponseHeadersRead` for streaming to avoid buffering.
 
-### Model Resolution Priority
+**KnowledgeService** — Loads Markdown documents from the filesystem, parses YAML frontmatter, and performs keyword-based relevance search.
 
-The model used for LLM requests is resolved in this order:
-1. **Per-request override** — `model` field in the request body (highest priority)
-2. **Configuration** — `AppSettings:FreeLlmApi:DefaultModel` from `appsettings.json`
-3. **Fallback** — `"auto"` (router picks the best available model)
+**ProfileService** — Loads developer profiles from Markdown files with YAML frontmatter.
 
-### Startup Behavior
+**GlobalExceptionMiddleware** — Catches unhandled exceptions and returns OpenAI-compatible error responses for `/v1/*` endpoints.
 
-- Documents are **loaded on startup**: `await knowledgeService.LoadDocumentsAsync()`
-- Swagger UI is available in Development mode at `/swagger`
-- Health check endpoint: `GET /health`
+### Instruction Precedence (highest to lowest)
 
-## FreeLLM Routing Modes
+1. **Client's system message** — Preserved and extended, never replaced
+2. **DeveloperMemory profile context** — Appended to system message
+3. **Knowledge context** — Relevant documents appended to system message
+4. **User messages** — Preserved as-is; original conversation history intact
 
-DeveloperMemory integrates with FreeLLM API's model routing system. Supported routing modes:
+### Prompt Enrichment Detail
 
-| Mode | Description | When to Use |
-|---|---|---|
-| `auto` | Router picks the best available model | Default — good for general queries |
-| `auto:fast` | Router picks the fastest available model | Latency-sensitive requests |
-| `auto:smart` | Router picks the most capable available model | Complex reasoning tasks |
-| `fusion` | Multiple models answer in parallel, a judge synthesizes one answer | High-quality responses, research |
-| Explicit ID | Any model ID from FreeLLM catalog (e.g. `gemini-3.5-flash`) | Pin to a specific model |
+When a chat completion request arrives:
+1. Extract the last user message as the search query
+2. Load developer profiles from the `Profiles/` directory
+3. Search knowledge documents for relevance
+4. Build enriched request via `PromptBuilder.BuildEnrichedRequest()`:
+   - If a system message exists: append DeveloperMemory context to it
+   - If no system message: create one with context
+   - All other messages preserved unchanged
+5. Forward enriched request to the downstream provider
+6. Return response (streaming or non-streaming)
 
-### Configuration
+## OpenAI-Compatible API Reference
 
-Set the default routing mode in `appsettings.json`:
-```json
-{
-  "AppSettings": {
-    "FreeLlmApi": {
-      "BaseUrl": "http://localhost:3001/v1",
-      "ApiKey": "your-api-key",
-      "DefaultModel": "auto"
-    }
-  }
-}
-```
+### POST /v1/chat/completions
 
-Override via environment variable: `AppSettings__FreeLlmApi__DefaultModel=auto:fast`
+Chat completion endpoint supporting both streaming and non-streaming.
 
-### Per-Request Model Override
-
-Any request can override the configured default by including a `model` field:
-
-**Via `/api/Proxy`:**
-```json
-{
-  "query": "How do I optimize this query?",
-  "model": "auto:smart",
-  "project": "MyApp"
-}
-```
-
-**Via `/v1/chat/completions` (OpenAI-compatible):**
-```json
-{
-  "model": "fusion",
-  "messages": [
-    { "role": "user", "content": "Explain SOLID principles" }
-  ],
-  "temperature": 0.7,
-  "max_tokens": 500
-}
-```
-
-**Pin to a specific model:**
-```json
-{
-  "model": "gemini-3.5-flash",
-  "messages": [
-    { "role": "user", "content": "Quick question" }
-  ]
-}
-```
-
-## Complete API Reference
-
-### Knowledge Controller (`/api/Knowledge`)
-
-| Method | Path | Description | Parameters |
-|---|---|---|---|
-| `GET` | `/api/Knowledge` | Search documents | `query` (string), `project` (string, optional), `tags` (list<string>, optional) |
-| `GET` | `/api/Knowledge/documents` | Get all documents | — |
-| `GET` | `/api/Knowledge/{id}` | Get document by GUID | `id` (path) |
-| `POST` | `/api/Knowledge/reindex` | Reload and reindex all documents | — |
-| `POST` | `/api/Knowledge` | Create a new knowledge document | Body: `CreateDocumentRequest` JSON |
-
-**Response:** `SearchResult[]` for search, `KnowledgeDocument[]` for document listing.
-
-**Create Document Request (`CreateDocumentRequest`):**
-```json
-{
-  "title": "My New Document",
-  "content": "# Document content here...",
-  "project": "MyProject",
-  "tags": ["dotnet", "api"]
-}
-```
-
-### Profiles Controller (`/api/Profiles`)
-
-| Method | Path | Description | Parameters |
-|---|---|---|---|
-| `GET` | `/api/Profiles` | Get all loaded profiles | — |
-| `POST` | `/api/Profiles` | Load a profile from file | Body: `string` (file path) |
-
-**Response:** `DeveloperProfile[]` or `DeveloperProfile`.
-
-### Proxy Controller (`/api/Proxy`)
-
-| Method | Path | Description | Parameters |
-|---|---|---|---|
-| `POST` | `/api/Proxy` | Forward query to LLM with context | Body: `PromptRequest` JSON |
-
-**Request body (`PromptRequest`):**
-```json
-{
-  "query": "How do I configure Serilog?",
-  "project": "MyProject",
-  "tags": ["logging", "dotnet"],
-  "profileId": "guid-string",
-  "systemPrompt": "You are a helpful .NET assistant.",
-  "model": "auto:fast"
-}
-```
-
-### OpenAI-Compatible Controller (`/v1`)
-
-| Method | Path | Description | Parameters |
-|---|---|---|---|
-| `POST` | `/v1/chat/completions` | OpenAI-compatible chat completion | Body: `OpenAIChatCompletionRequest` |
-| `GET` | `/v1/models` | List available models | — |
-
-**Request body (`OpenAIChatCompletionRequest`):**
+**Request body:**
 ```json
 {
   "model": "auto",
@@ -200,160 +102,194 @@ Any request can override the configured default by including a `model` field:
     { "role": "user", "content": "How do I use dependency injection?" }
   ],
   "temperature": 0.7,
-  "max_tokens": 150,
-  "project": "MyProject",
-  "tags": ["dotnet"],
-  "profile_id": "guid-string"
+  "top_p": 1.0,
+  "max_tokens": 2048,
+  "stream": false,
+  "frequency_penalty": 0.0,
+  "presence_penalty": 0.0,
+  "stop": null,
+  "n": 1,
+  "user": "cline-user"
 }
 ```
 
-Non-standard fields (`project`, `tags`, `profile_id`) are extensions for context filtering.
+**Standard OpenAI parameters forwarded:**
+- `model` — Model selection (resolved: per-request → config → "auto")
+- `messages` — Full conversation history (preserved)
+- `temperature` — Sampling temperature
+- `top_p` — Nucleus sampling
+- `max_tokens` / `max_completion_tokens` — Token limits
+- `stream` — Enable SSE streaming
+- `stream_options` — Streaming options (e.g., `include_usage`)
+- `frequency_penalty` — Frequency penalty
+- `presence_penalty` — Presence penalty
+- `stop` — Stop sequences
+- `n` — Number of completions
+- `user` — User identifier
 
-### Sample Requests by Routing Mode
+**DeveloperMemory extensions (optional):**
+- `project` — Filter knowledge by project
+- `tags` — Filter knowledge by tags
+- `profile_id` — Specific developer profile GUID
 
-**Auto routing (default):**
-```bash
-curl -X POST http://localhost:5041/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"auto","messages":[{"role":"user","content":"Hello"}]}'
+**Non-standard fields** from the client are captured via `JsonExtensionData` and forwarded to the downstream provider without data loss.
+
+### GET /v1/models
+
+List available models from the upstream provider. Falls back to the configured default model if the upstream is unavailable.
+
+**Response:**
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "auto",
+      "object": "model",
+      "created": 1700000000,
+      "owned_by": "developer-memory"
+    }
+  ]
+}
 ```
 
-**Fast auto routing:**
-```bash
-curl -X POST http://localhost:5041/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"auto:fast","messages":[{"role":"user","content":"Quick question"}]}'
+### GET /v1/models/{modelId}
+
+Get details for a specific model. Returns 404 with OpenAI-compatible error if not found.
+
+### Error Responses
+
+All errors on `/v1/*` endpoints follow the OpenAI-compatible format:
+
+```json
+{
+  "error": {
+    "message": "Description of the error",
+    "type": "error_type",
+    "code": "error_code",
+    "param": "parameter_name"
+  }
+}
 ```
 
-**Smart auto routing:**
-```bash
-curl -X POST http://localhost:5041/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"auto:smart","messages":[{"role":"user","content":"Complex architecture question"}]}'
-```
+**Error types:**
+- `invalid_request_error` — Bad request, missing fields, model not found
+- `authentication_error` — Upstream provider auth failure
+- `permission_error` — Access denied
+- `rate_limit_error` — Rate limit exceeded (429)
+- `timeout_error` — Upstream provider timeout
+- `server_error` — Internal error or upstream failure
+- `upstream_error` — Non-mapped upstream provider error (502)
 
-**Fusion (multi-model):**
-```bash
-curl -X POST http://localhost:5041/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"fusion","messages":[{"role":"user","content":"Best practices for .NET"}]}'
-```
+## Management API Reference
 
-**Explicit model:**
-```bash
-curl -X POST http://localhost:5041/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"gemini-3.5-flash","messages":[{"role":"user","content":"Explain async/await"}]}'
-```
-
-### Health Check
+### Knowledge Controller (`/api/Knowledge`)
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/health` | Returns `{ "Status": "Healthy", "Timestamp": "..." }` |
+| `GET` | `/api/Knowledge` | Search documents (query, project, tags) |
+| `GET` | `/api/Knowledge/documents` | List all documents |
+| `GET` | `/api/Knowledge/{id}` | Get document by GUID |
+| `POST` | `/api/Knowledge` | Create document (body: `CreateDocumentRequest`) |
+| `POST` | `/api/Knowledge/reindex` | Reload and reindex all documents |
+
+### Profiles Controller (`/api/Profiles`)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/Profiles` | List all loaded profiles |
+| `POST` | `/api/Profiles` | Load a profile from file path |
 
 ## Data Models
 
+### OpenAIChatCompletionRequest
+Standard OpenAI request fields (`model`, `messages`, `temperature`, `top_p`, `max_tokens`, `stream`, `frequency_penalty`, `presence_penalty`, `stop`, `n`, `user`, `stream_options`) plus DeveloperMemory extensions (`project`, `tags`, `profile_id`). Unknown fields captured via `JsonExtensionData`.
+
+### Message
+- `role` (string) — Message role
+- `content` (string?) — Message content
+- `tool_calls` (List<ToolCall>?) — Tool calls (for assistant messages)
+- `tool_call_id` (string?) — Tool call ID (for tool messages)
+- `name` (string?) — Name field
+- `ExtensionData` — Captures additional properties (e.g., content arrays) for forwarding
+
+### OpenAIChatCompletionResponse
+Standard OpenAI response: `id`, `object`, `created`, `model`, `choices[]`, `usage`, `system_fingerprint`.
+
+### ChatCompletionChunk
+Streaming response chunk: `id`, `object` ("chat.completion.chunk"), `created`, `model`, `choices[]` (with `delta` instead of `message`), `usage`.
+
+### OpenAIErrorResponse
+```json
+{ "error": { "message": "...", "type": "...", "code": "...", "param": "..." } }
+```
+
 ### KnowledgeDocument
-| Property | Type | Description |
-|---|---|---|
-| `Id` | `Guid` | Auto-generated unique ID |
-| `Title` | `string` | From frontmatter `title` field or filename |
-| `Content` | `string` | Markdown body (after frontmatter) |
-| `Project` | `string` | From frontmatter `project` field |
-| `Tags` | `List<string>` | From frontmatter `tags` field (comma-separated) |
-| `FilePath` | `string` | Absolute path to the source .md file |
-| `LastModified` | `DateTime` | File last-write timestamp |
+`Id` (Guid), `Title`, `Content`, `Project`, `Tags` (List<string>), `FilePath`, `LastModified`.
 
 ### DeveloperProfile
-| Property | Type | Description |
-|---|---|---|
-| `Id` | `Guid` | Auto-generated unique ID |
-| `Name` | `string` | From frontmatter `name` field |
-| `Role` | `string` | From frontmatter `role` field |
-| `Skills` | `List<string>` | From frontmatter `skills` field (comma-separated) |
-| `Experience` | `string` | From frontmatter `experience` field |
-| `Bio` | `string` | Markdown body (after frontmatter) |
-| `FilePath` | `string` | Absolute path to the source .md file |
-| `LastModified` | `DateTime` | File last-write timestamp |
+`Id` (Guid), `Name`, `Role`, `Skills` (List<string>), `Experience`, `Bio`, `FilePath`, `LastModified`.
 
 ### SearchResult
-| Property | Type | Description |
-|---|---|---|
-| `Id` | `Guid` | Document ID |
-| `Title` | `string` | Document title |
-| `Content` | `string` | Document content |
-| `Project` | `string` | Project name |
-| `Tags` | `List<string>` | Tags |
-| `Score` | `double` | Relevance score (higher = more relevant) |
-| `FilePath` | `string` | Source file path |
-
-### PromptRequest
-| Property | Type | Description |
-|---|---|---|
-| `Query` | `string?` | User's question |
-| `Project` | `string?` | Filter documents by project |
-| `Tags` | `List<string>?` | Filter documents by tags |
-| `ProfileId` | `string?` | Developer profile GUID to include as context |
-| `SystemPrompt` | `string?` | Custom system instructions for the LLM |
-| `Model` | `string?` | Model routing mode override (auto, auto:fast, auto:smart, fusion, or explicit ID) |
-
-### OpenAI Types
-- `OpenAIChatCompletionRequest`: Standard fields (`model`, `messages`, `temperature`, `max_tokens`, `stream`) plus extensions (`project`, `tags`, `profile_id`)
-- `Message`: `{ role: string, content: string }`
-- `OpenAIChatCompletionResponse`: `{ id, object, created, model, choices[], usage }`
-- `Choice`: `{ index, message, finish_reason }`
-- `Usage`: `{ prompt_tokens, completion_tokens, total_tokens }`
-- `OpenAIModel`: `{ id, object, created, owned_by }`
-- `OpenAIModelListResponse`: `{ object: "list", data: OpenAIModel[] }`
+`Id` (Guid), `Title`, `Content`, `Project`, `Tags`, `Score` (double), `FilePath`.
 
 ## Configuration
 
-### appsettings.json Structure
+### appsettings.json
 
 ```json
 {
   "AppSettings": {
     "FreeLlmApi": {
       "BaseUrl": "http://localhost:3001/v1",
-      "ApiKey": "your-api-key",
+      "ApiKey": "",
       "DefaultModel": "auto"
     },
     "Paths": {
       "KnowledgeFolder": "./Knowledge",
       "ProfilesFolder": "./Profiles"
     }
-  },
-  "Serilog": {
-    "MinimumLevel": { "Default": "Information" },
-    "WriteTo": [
-      { "Name": "Console" },
-      { "Name": "File", "Args": { "path": "logs/devmemory-.log", "rollingInterval": "Day", "retainedFileCountLimit": 30 } }
-    ]
   }
 }
 ```
 
 ### Environment Variable Overrides
-Use `__` separator: `AppSettings__FreeLlmApi__ApiKey`, `AppSettings__FreeLlmApi__DefaultModel`, `AppSettings__Paths__KnowledgeFolder`
 
-### Strongly-Typed Settings
-- `AppSettings.FreeLlmApi.BaseUrl` — LLM API base URL (must include `/v1` suffix)
-- `AppSettings.FreeLlmApi.ApiKey` — Bearer token for LLM API auth
-- `AppSettings.FreeLlmApi.DefaultModel` — Default routing mode (auto, auto:fast, auto:smart, fusion, or explicit model ID)
-- `AppSettings.Paths.KnowledgeFolder` — Directory for knowledge `.md` files
-- `AppSettings.Paths.ProfilesFolder` — Directory for profile `.md` files
+Use `__` separator:
+- `AppSettings__FreeLlmApi__BaseUrl`
+- `AppSettings__FreeLlmApi__ApiKey`
+- `AppSettings__FreeLlmApi__DefaultModel`
+- `AppSettings__Paths__KnowledgeFolder`
+- `AppSettings__Paths__ProfilesFolder`
 
-## Error Handling
+### Model Resolution Priority
 
-| Status Code | When |
+1. Per-request `model` field (highest)
+2. `AppSettings:FreeLlmApi:DefaultModel` from config
+3. `"auto"` fallback
+
+### FreeLLM Routing Modes
+
+| Mode | Description |
 |---|---|
-| `200 OK` | Success |
-| `400 Bad Request` | Invalid request format, missing fields, or invalid profile file |
-| `404 Not Found` | Document ID does not exist |
-| `500 Internal Server Error` | LLM API connection failure, file system errors, JSON deserialization errors |
+| `auto` | Router picks the best available model |
+| `auto:fast` | Router picks the fastest available model |
+| `auto:smart` | Router picks the most capable available model |
+| `fusion` | Multiple models answer in parallel, judge synthesizes |
+| Explicit ID | Pin to a specific model (e.g., `gpt-4`, `gemini-3.5-flash`) |
 
-All errors are logged via Serilog to both console and `logs/devmemory-*.log`.
+## Build & Run
+
+```bash
+dotnet restore
+dotnet build
+dotnet run
+```
+
+- HTTP: `http://localhost:5041`
+- HTTPS: `https://localhost:7144`
+- Swagger: `/swagger` (Development only)
+- Health: `GET /health`
 
 ## Dependencies
 
@@ -365,13 +301,10 @@ All errors are logged via Serilog to both console and `logs/devmemory-*.log`.
 | `Microsoft.AspNetCore.OpenApi` | 10.0.10 | OpenAPI spec generation |
 | `Swashbuckle.AspNetCore` | 10.0.1 | Swagger UI |
 
-## Build & Run
+## Limitations
 
-```bash
-dotnet restore          # Install dependencies
-dotnet build            # Build the project
-dotnet run              # Run the API (https://localhost:7144 / http://localhost:5041)
-dotnet run --project DeveloperMemory.Api  # Run from solution root
-```
-
-Swagger UI: `/swagger` (Development mode only)
+- **No authentication** — CORS is open, no auth middleware is enforced
+- **Keyword search only** — No semantic/vector search; relevance scoring is text-based
+- **In-memory cache** — Documents loaded on startup; reindex via `POST /api/Knowledge/reindex`
+- **No function/tool calling** — Tool call messages are forwarded but not processed by DeveloperMemory
+- **No embeddings endpoint** — Out of scope for V1

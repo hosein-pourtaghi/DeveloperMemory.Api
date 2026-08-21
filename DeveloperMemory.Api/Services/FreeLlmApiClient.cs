@@ -3,7 +3,7 @@ using DeveloperMemory.Api.Models;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
 using System;
-using System.Collections.Generic;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -13,6 +13,10 @@ using System.Threading.Tasks;
 
 namespace DeveloperMemory.Api.Services;
 
+/// <summary>
+/// HTTP client for communicating with any OpenAI-compatible LLM provider.
+/// Supports both streaming and non-streaming requests. Configured via AppSettings.
+/// </summary>
 public class FreeLlmApiClient
 {
     private readonly HttpClient _httpClient;
@@ -31,6 +35,9 @@ public class FreeLlmApiClient
         _appSettings = appSettings.Value;
         _logger = logger;
 
+        // Configure base address and timeout
+        _httpClient.Timeout = TimeSpan.FromMinutes(5); // Generous timeout for large completions
+
         if (!string.IsNullOrEmpty(_appSettings.FreeLlmApi.ApiKey))
         {
             _httpClient.DefaultRequestHeaders.Authorization =
@@ -40,20 +47,14 @@ public class FreeLlmApiClient
 
     /// <summary>
     /// Builds a full endpoint URL from the configured BaseUrl and an endpoint path.
-    /// Handles both cases: BaseUrl ending with /v1 and BaseUrl ending with /v1/something.
-    /// Example: BaseUrl="http://localhost:3001/v1", endpoint="/chat/completions"
-    ///       → "http://localhost:3001/v1/chat/completions"
     /// </summary>
     private string BuildEndpointUrl(string endpoint)
     {
         var baseUrl = _appSettings.FreeLlmApi.BaseUrl.TrimEnd('/');
-        // If BaseUrl already ends with the endpoint, return as-is (idempotent)
         if (baseUrl.EndsWith(endpoint, StringComparison.OrdinalIgnoreCase))
             return baseUrl;
-        // If BaseUrl ends with /v1, just append the endpoint
         if (baseUrl.EndsWith("/v1", StringComparison.OrdinalIgnoreCase))
             return $"{baseUrl}{endpoint}";
-        // Otherwise treat BaseUrl as the root and build /v1 + endpoint
         return $"{baseUrl}/v1{endpoint}";
     }
 
@@ -61,7 +62,7 @@ public class FreeLlmApiClient
     /// Resolves the model to use for a request.
     /// Priority: per-request override > configured DefaultModel > "auto".
     /// </summary>
-    private string ResolveModel(string? requestModel)
+    public string ResolveModel(string? requestModel)
     {
         if (!string.IsNullOrWhiteSpace(requestModel))
             return requestModel;
@@ -73,70 +74,176 @@ public class FreeLlmApiClient
     }
 
     /// <summary>
-    /// Forwards the full OpenAI chat completion request to the upstream LLM API.
-    /// The enriched prompt (with knowledge + profile context) replaces the last user message.
-    /// Model resolution: per-request override → configured DefaultModel → "auto".
+    /// Checks whether the downstream provider is configured and reachable.
+    /// Returns true if the base URL is configured.
+    /// </summary>
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(_appSettings.FreeLlmApi.BaseUrl);
+
+    // ── Non-Streaming ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sends a chat completion request to the downstream provider (non-streaming).
+    /// The request should already be enriched with DeveloperMemory context.
     /// </summary>
     public async Task<OpenAIChatCompletionResponse> SendCompletionAsync(
         OpenAIChatCompletionRequest request,
-        string enrichedPrompt,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(_appSettings.FreeLlmApi.BaseUrl))
-        {
-            throw new InvalidOperationException("FreeLlmApi base URL is not configured");
-        }
+        EnsureConfigured();
 
-        // Resolve model: per-request override wins, then config, then "auto"
         request.Model = ResolveModel(request.Model);
-
-        // Replace the last user message with the enriched prompt
-        var lastUserIndex = request.Messages.FindLastIndex(m => m.Role == "user");
-        if (lastUserIndex >= 0)
-        {
-            request.Messages[lastUserIndex].Content = enrichedPrompt;
-        }
-        else
-        {
-            request.Messages.Add(new Message { Role = "user", Content = enrichedPrompt });
-        }
-
-        var content = new StringContent(
-            JsonSerializer.Serialize(request, JsonOptions),
-            Encoding.UTF8,
-            "application/json");
+        request.Stream = false;
 
         var endpointUrl = BuildEndpointUrl("/chat/completions");
 
-        _logger.LogInformation("Sending request to FreeLLM: url={Url}, model={Model}, temperature={Temp}, maxTokens={MaxTokens}",
-            endpointUrl, request.Model, request.Temperature, request.MaxTokens);
+        _logger.LogInformation(
+            "Sending non-streaming request to provider: url={Url}, model={Model}, messages={MessageCount}",
+            endpointUrl, request.Model, request.Messages.Count);
+
+        var requestBody = JsonSerializer.Serialize(request, JsonOptions);
+        var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
 
         var response = await _httpClient.PostAsync(endpointUrl, content, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
             var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogError("Error from FreeLlm API: {StatusCode} - {ErrorContent}", response.StatusCode, errorContent);
-            throw new HttpRequestException($"Error from FreeLlm API: {errorContent}");
+            _logger.LogError("Provider returned error: {StatusCode} - {Error}", response.StatusCode, errorContent);
+            throw new DownstreamProviderException(response.StatusCode, errorContent);
         }
 
         var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
 
         try
         {
-            var responseData = JsonSerializer.Deserialize<OpenAIChatCompletionResponse>(responseContent, JsonOptions);
-            return responseData ?? new OpenAIChatCompletionResponse();
+            return JsonSerializer.Deserialize<OpenAIChatCompletionResponse>(responseContent, JsonOptions)
+                   ?? new OpenAIChatCompletionResponse();
         }
         catch (JsonException ex)
         {
-            _logger.LogError(ex, "Failed to deserialize FreeLlm API response. Raw response: {Response}", responseContent.Length > 500 ? responseContent[..500] : responseContent);
+            _logger.LogError(ex, "Failed to deserialize provider response. Raw: {Response}",
+                responseContent.Length > 500 ? responseContent[..500] : responseContent);
             throw;
         }
     }
 
+    // ── Streaming ──────────────────────────────────────────────────────────
+
     /// <summary>
-    /// Legacy method for /api/Proxy endpoint.
-    /// Resolves model from: explicit requestModel → DefaultModel config → "auto".
+    /// Sends a streaming chat completion request to the downstream provider.
+    /// Returns the raw HTTP response message so the caller can stream the body
+    /// directly to the client without buffering.
+    /// The caller is responsible for disposing the response.
+    /// </summary>
+    public async Task<HttpResponseMessage> SendStreamingCompletionAsync(
+        OpenAIChatCompletionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureConfigured();
+
+        request.Model = ResolveModel(request.Model);
+        request.Stream = true;
+
+        var endpointUrl = BuildEndpointUrl("/chat/completions");
+
+        _logger.LogInformation(
+            "Sending streaming request to provider: url={Url}, model={Model}, messages={MessageCount}",
+            endpointUrl, request.Model, request.Messages.Count);
+
+        var requestBody = JsonSerializer.Serialize(request, JsonOptions);
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, endpointUrl)
+        {
+            Content = new StringContent(requestBody, Encoding.UTF8, "application/json")
+        };
+
+        // Use ResponseHeadersRead so we can start streaming immediately
+        var response = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogError("Provider returned streaming error: {StatusCode} - {Error}", response.StatusCode, errorContent);
+            response.Dispose();
+            throw new DownstreamProviderException(response.StatusCode, errorContent);
+        }
+
+        return response;
+    }
+
+    // ── Model Listing ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Fetches the list of available models from the upstream provider.
+    /// Returns empty list on failure (does not throw).
+    /// </summary>
+    public async Task<List<string>> GetModelsAsync(CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured)
+            return [];
+
+        try
+        {
+            var modelsUrl = BuildEndpointUrl("/models");
+            var response = await _httpClient.GetAsync(modelsUrl, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Failed to fetch models from upstream. Status: {StatusCode}", response.StatusCode);
+                return [];
+            }
+
+            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            try
+            {
+                var modelResponse = JsonSerializer.Deserialize<OpenAIModelListResponse>(responseContent, JsonOptions);
+                return modelResponse?.Data?.Select(m => m.Id).ToList() ?? [];
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Failed to deserialize models response from upstream");
+                return [];
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching models from upstream provider");
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Fetches details for a specific model from the upstream provider.
+    /// </summary>
+    public async Task<OpenAIModel?> GetModelAsync(string modelId, CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured)
+            return null;
+
+        try
+        {
+            var modelsUrl = BuildEndpointUrl($"/models/{modelId}");
+            var response = await _httpClient.GetAsync(modelsUrl, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            return JsonSerializer.Deserialize<OpenAIModel>(responseContent, JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching model {ModelId} from upstream provider", modelId);
+            return null;
+        }
+    }
+
+    // ── Legacy Support ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Legacy method for the /api/Proxy endpoint. Sends a simple prompt and returns the text response.
     /// </summary>
     public async Task<string> SendPromptAsync(string prompt, string? requestModel = null, CancellationToken cancellationToken = default)
     {
@@ -145,55 +252,39 @@ public class FreeLlmApiClient
         var request = new OpenAIChatCompletionRequest
         {
             Model = model,
-            Messages = new List<Message>
-            {
-                new Message { Role = "user", Content = prompt }
-            },
+            Messages = [new Message { Role = "user", Content = prompt }],
             Temperature = 0.7,
-            MaxTokens = 150,
+            MaxTokens = 2048,
             Stream = false
         };
 
-        var response = await SendCompletionAsync(request, prompt, cancellationToken);
+        var response = await SendCompletionAsync(request, cancellationToken);
         return response.Choices?.FirstOrDefault()?.Message?.Content ?? string.Empty;
     }
 
-    public async Task<List<string>> GetModelsAsync(CancellationToken cancellationToken = default)
+    private void EnsureConfigured()
     {
-        if (string.IsNullOrEmpty(_appSettings.FreeLlmApi.BaseUrl))
+        if (!IsConfigured)
         {
-            return new List<string>();
+            throw new InvalidOperationException(
+                "Downstream LLM provider is not configured. Set AppSettings:FreeLlmApi:BaseUrl in appsettings.json.");
         }
+    }
+}
 
-        try
-        {
-            var modelsUrl = BuildEndpointUrl("/models");
+/// <summary>
+/// Exception thrown when the downstream provider returns an error.
+/// Carries the HTTP status code and raw error content for translation into OpenAI-compatible errors.
+/// </summary>
+public class DownstreamProviderException : Exception
+{
+    public HttpStatusCode StatusCode { get; }
+    public string RawErrorContent { get; }
 
-            var response = await _httpClient.GetAsync(modelsUrl, cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("Failed to fetch models from upstream API. Status code: {StatusCode}", response.StatusCode);
-                return new List<string>();
-            }
-
-            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
-
-            try
-            {
-                var modelResponse = JsonSerializer.Deserialize<OpenAIModelListResponse>(responseContent, JsonOptions);
-                return modelResponse?.Data?.Select(m => m.Id).ToList() ?? new List<string>();
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogError(ex, "Failed to deserialize models response from upstream API");
-                return new List<string>();
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error fetching models from upstream API");
-            return new List<string>();
-        }
+    public DownstreamProviderException(HttpStatusCode statusCode, string rawErrorContent)
+        : base($"Downstream provider returned {statusCode}: {rawErrorContent}")
+    {
+        StatusCode = statusCode;
+        RawErrorContent = rawErrorContent;
     }
 }

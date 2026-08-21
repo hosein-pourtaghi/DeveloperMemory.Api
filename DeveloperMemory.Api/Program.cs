@@ -2,7 +2,6 @@ using Serilog;
 using DeveloperMemory.Api.Services;
 using DeveloperMemory.Api.Infrastructure.Configuration;
 using DeveloperMemory.Api.Infrastructure.Middleware;
-// RequestLoggingMiddleware is in the same namespace
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,7 +12,35 @@ builder.Host.UseSerilog((context, services) =>
 });
 
 // Add services to the container
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        // Replace ASP.NET's default 400 response with OpenAI-compatible error format
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var errors = context.ModelState
+                .Where(e => e.Value?.Errors.Count > 0)
+                .SelectMany(e => e.Value!.Errors)
+                .Select(e => e.ErrorMessage)
+                .ToList();
+
+            var errorDetail = errors.Count > 0 ? string.Join("; ", errors) : "Invalid request body";
+
+            var result = new Microsoft.AspNetCore.Mvc.ObjectResult(new
+            {
+                error = new
+                {
+                    message = errorDetail,
+                    type = "invalid_request_error",
+                    code = "bad_request",
+                    param = (string?)null
+                }
+            });
+            result.StatusCode = 400;
+            result.ContentTypes.Add("application/json");
+            return result;
+        };
+    });
 
 // Add Swagger/OpenAPI
 builder.Services.AddSwaggerGen(c =>
@@ -22,7 +49,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "DeveloperMemory API",
         Version = "v1",
-        Description = "OpenAI-compatible Developer Memory Gateway — enriches AI requests with developer profiles, coding guidelines, and project knowledge.",
+        Description = "OpenAI-compatible Developer Memory Gateway.",
         Contact = new Microsoft.OpenApi.OpenApiContact
         {
             Name = "DeveloperMemory",
@@ -30,7 +57,6 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 
-    // Enable XML comments if generated
     var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
     if (File.Exists(xmlPath))
@@ -61,7 +87,10 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Global exception handler (must be first in pipeline)
+// Diagnostic: log incoming request bodies for /v1/* (remove after debugging)
+app.UseMiddleware<RequestLoggingMiddleware>();
+
+// Global exception handler
 app.UseMiddleware<GlobalExceptionMiddleware>();
 
 // Configure the HTTP request pipeline

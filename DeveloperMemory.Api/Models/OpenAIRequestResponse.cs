@@ -87,10 +87,11 @@ public class Message
     public string Role { get; set; } = string.Empty;
 
     /// <summary>
-    /// Message content as a string. For multimodal content (content arrays),
-    /// the raw JSON is preserved in <see cref="ExtensionData"/> and forwarded untouched.
+    /// Message content. Can be a plain string or a JSON array (multimodal/tool content).
+    /// The <see cref="MessageContentConverter"/> handles both formats transparently.
     /// </summary>
     [JsonPropertyName("content")]
+    [JsonConverter(typeof(MessageContentConverter))]
     public string? Content { get; set; }
 
     /// <summary>

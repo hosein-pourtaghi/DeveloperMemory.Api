@@ -1,6 +1,7 @@
 ---
-name: AI Agent Rules
-scope: global
+title: "AI Agent Rules"
+project: ""
+tags: ai-agent, coding-standards, rules
 ---
 
 # AI Agent Rules

@@ -100,11 +100,11 @@ public class KnowledgeService
             string? line;
             while ((line = reader.ReadLine()) != null)
             {
-                var keyValue = line.Split(':');
-                if (keyValue.Length == 2)
+                var colonIndex = line.IndexOf(':');
+                if (colonIndex > 0)
                 {
-                    var key = keyValue[0].Trim().ToLowerInvariant();
-                    var value = keyValue[1].Trim();
+                    var key = line[..colonIndex].Trim().ToLowerInvariant();
+                    var value = line[(colonIndex + 1)..].Trim();
 
                     switch (key)
                     {

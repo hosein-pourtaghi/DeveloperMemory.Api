@@ -2,11 +2,11 @@
 
 ## Current State
 
-**This repository is in the design and documentation phase.** There is no source code yet. This guide describes the intended architecture and coding standards for when implementation begins.
+This repository contains a working .NET 10.0 implementation of the DeveloperMemory.Api gateway. The source code compiles (when a .NET SDK is available), serves HTTP requests, and has been audited and repaired (as of August 2026).
 
-When you are asked to implement code in this project, treat the design documents as specifications, not descriptions of existing code.
+When working in this repository, treat the source code as the primary truth. The design documents in this directory are specifications that may lag behind the implementation.
 
-## Project Structure (Planned)
+## Project Structure
 
 ```
 DeveloperMemory.Api/
@@ -42,8 +42,6 @@ DeveloperMemory.Api/
 └── appsettings.Development.json
 ```
 
-This structure is a design specification. File names and organization may change during implementation.
-
 ## Coding Standards
 
 ### Naming
@@ -72,7 +70,7 @@ This structure is a design specification. File names and organization may change
 - Stateless services are safe to register as singletons
 - External HTTP via typed `HttpClient` (FreeLlmApiClient)
 
-## How to Extend (When Code Exists)
+## How to Extend
 
 ### Adding a New Mode
 1. Add enum value to `ModeDetector.TaskMode`
@@ -82,7 +80,7 @@ This structure is a design specification. File names and organization may change
 
 ### Adding a New Knowledge Source
 1. Create `.md` file in `Knowledge/` with YAML frontmatter
-2. Use `name` and `scope` fields
+2. Use `name` and `scope` fields (see [KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md))
 3. Call `POST /api/Knowledge/reindex` to reload
 
 ## Key Gotchas
@@ -99,7 +97,9 @@ This structure is a design specification. File names and organization may change
 
 6. **Multimodal content**: Array content is stored as JSON string in `Message.Content`. It's forwarded correctly but DeveloperMemory doesn't parse individual content parts.
 
-## Testing Checklist (When Code Exists)
+7. **Frontmatter parsing**: The parser splits on `:` and uses the first two segments only. Values containing `:` in the value portion are truncated. Keep frontmatter values simple.
+
+## Testing Checklist
 
 - [ ] `dotnet build` succeeds with 0 errors
 - [ ] `GET /health` returns healthy
@@ -109,3 +109,6 @@ This structure is a design specification. File names and organization may change
 - [ ] `GET /v1/models/{id}` returns model or 404
 - [ ] Token metrics appear in console and log file
 - [ ] Auto model selection routes plan vs build correctly
+- [ ] `GET /api/Knowledge` returns knowledge documents
+- [ ] `GET /api/Profiles` returns developer profiles
+- [ ] `POST /api/Knowledge/reindex` reloads documents

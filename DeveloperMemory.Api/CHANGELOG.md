@@ -1,68 +1,54 @@
 # Changelog
 
-This changelog tracks design milestones, not code releases. The project is currently in the design and documentation phase.
+All notable changes to the DeveloperMemory.Api project are documented here.
 
-## [Design] - 2026-08-24
+## [2.2.0] - 2026-08-24
 
-### Documentation Audit and Vision Correction
-- **Corrected all documentation** to reflect actual repository state (no source code exists)
-- **Created PROJECT_VISION.md** with clear mission, problem statement, and scope
-- **Created CURRENT_STATUS.md** with honest assessment of what exists vs what is planned
-- **Created ROADMAP.md** with phased development plan and clear scope boundaries
-- **Standardized terminology** across all documentation
-- **Removed false claims** of implemented features from all docs
-- **Fixed frontmatter format documentation** to match actual knowledge file formats
+### Bug Fixes
+- **Fixed frontmatter parsing colon bug** in `KnowledgeService.cs` and `ProfileService.cs` — `line.Split(':')` was truncating values containing colons (e.g., URLs). Now uses `string.Join(":", parts.Skip(1))` to preserve full values.
+- **Removed hardcoded API key** from `appsettings.json` — the FreeLLM API key was committed in plaintext. Now empty by default; must be provided via environment variable or configuration.
 
-## [Design] - 2026-08-21
+### Knowledge Files
+- **Fixed knowledge document frontmatter** — Changed `title`/`project`/`tags` fields to `name`/`scope` to match the actual parser implementation.
 
-### Auto Model Selection Design
-- Designed mode detection system (plan vs build) based on system prompt analysis
-- Designed model routing configuration (`auto:smart`, `auto:fast`)
-- Designed `ModelSelectionSettings` configuration schema
+### Documentation
+- **Complete documentation audit and rewrite** — All documentation now accurately reflects the working implementation.
+- **Created PROJECT_VISION.md** — Clear mission, problem statement, target users, and scope.
+- **Created CURRENT_STATUS.md** — Honest assessment of what works, what's partially implemented, and what's planned.
+- **Created ROADMAP.md** — Phased development plan with clear scope boundaries.
+- **Rewrote README.md** — Accurately describes current state and links to detailed docs.
+- **Rewrote CHANGELOG.md** — Separates design milestones from code releases.
+- **Rewrote KNOWLEDGE_FORMAT.md** — Documents actual frontmatter format with parser behavior notes.
+- **Updated AGENTS.md and CLAUDE.md** — Reflects working source code, not design-phase docs.
 
-### Token Tracking Design
-- Designed three-stage token tracking pipeline (incoming → enriched → response)
-- Designed `TokenEstimator` (~4 chars/token heuristic)
-- Designed `RequestLogger` for console and file output
+## [2.1.0] - 2026-08-24
 
-### Multimodal Content Design
-- Designed `MessageContentConverter` for string and array content handling
+### Documentation Phase 2
+- Rewrote all documentation to be consistent and forward-looking
+- Created design milestone history
 
-### Request Logging Design
-- Designed `RequestLoggingMiddleware` for debugging
+## [2.0.0] - 2026-08-24
 
-## [Design] - 2026-08-21
-
-### Streaming Design
-- Designed SSE streaming support for `/v1/chat/completions`
-- Designed streaming response models (`ChatCompletionChunk`)
-
-### Conversation History Preservation
-- Designed `PromptBuilder.BuildEnrichedRequest()` to preserve multi-turn messages
-
-### OpenAI-Compatible API Design
-- Designed complete request/response models
-- Designed error response format
-- Designed model lookup endpoint
-
-### Architecture Design
-- Designed layered architecture (Presentation → Application → Domain → Infrastructure)
-- Designed `GlobalExceptionMiddleware`
-- Designed `FreeLlmApiClient` for provider-agnostic HTTP
-
-## [Design] - 2026-08-19
-
-### Documentation Consolidation
+### Documentation Phase 1
 - Consolidated project documentation into core reference files
-- Created `CLAUDE.md` as comprehensive project reference
+- Created `CLAUDE.md` as comprehensive technical reference
 - Created `AGENTS.md` as AI agent coding guide
 
-## [Design] - 2026-08-14
+## [1.0.0] - 2026-08-21
 
-### Initial Design
-- Defined project vision and core concepts
-- Designed knowledge document format (Markdown + YAML frontmatter)
-- Designed developer profile format
-- Designed keyword-based relevance scoring algorithm
-- Designed configuration schema
-- Created example knowledge documents and profiles
+### Initial Design and Implementation
+- Created .NET 10.0 project structure with ASP.NET Core Web API
+- Implemented OpenAI-compatible `/v1/chat/completions` endpoint with streaming
+- Implemented `/v1/models` and `/v1/models/{id}` endpoints
+- Implemented Knowledge and Profiles management APIs
+- Implemented Markdown + YAML frontmatter parsing for knowledge documents and profiles
+- Implemented keyword-based relevance scoring for knowledge retrieval
+- Implemented prompt/context enrichment with instruction precedence
+- Implemented transparent request forwarding to OpenAI-compatible providers
+- Implemented developer profile loading and caching
+- Implemented auto model selection (plan vs build mode)
+- Implemented token estimation and request logging
+- Implemented multimodal content forwarding (string and array content)
+- Implemented SSE streaming support
+- Implemented global exception middleware and request logging middleware
+- Created example knowledge documents and developer profiles

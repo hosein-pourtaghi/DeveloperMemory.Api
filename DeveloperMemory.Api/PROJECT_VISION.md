@@ -1,63 +1,213 @@
 # Project Vision — Developer Memory API
 
-## Mission
+## Vision
 
-Developer Memory API is a persistent context and memory gateway that helps AI development tools retrieve relevant developer and project knowledge and build better AI requests.
+DeveloperMemory.Api is a persistent, intelligent memory layer for AI applications and agents. It enables AI systems to remember relevant information about a user, their preferences, goals, projects, decisions, and previous interactions across conversations.
 
-## Problem Statement
+The system captures valuable information from interactions, organizes it as structured long-term and short-term memory, keeps memories updated as information changes, and retrieves only the information relevant to a new request. It then provides that context to AI models and agents so they can generate more personalized, consistent, and informed responses without requiring the user to repeatedly provide the same context.
 
-AI coding assistants are stateless. Every conversation starts from zero. They forget your coding standards, ignore your architectural preferences, and require you to re-explain your project's context in every session. Developers waste time re-explaining the same constraints, and AI suggestions vary wildly because they lack consistent context.
+DeveloperMemory.Api is not simply a chat history store or a RAG document system. Its primary purpose is to act as a **Memory Intelligence Gateway** between users, AI applications, agents, and LLM providers.
 
-There is no standard way for AI tools to persistently learn and retrieve what matters about a developer, their preferences, or their project's technical decisions.
+---
+
+## The Problem
+
+Most AI models are stateless between conversations or have limited memory capabilities.
+
+As a result, users repeatedly need to explain:
+
+- Who they are
+- What they prefer
+- What they are currently working on
+- Their technical environment
+- Their projects and architecture
+- Previous decisions
+- Important constraints
+- Long-term goals
+
+Raw chat history is not an effective solution because sending every previous message to an LLM is expensive, inefficient, and often irrelevant.
+
+A useful AI memory system must answer three questions:
+
+1. **What information should be remembered?**
+2. **How should that information be updated over time?**
+3. **Which memories are relevant to the current request?**
+
+DeveloperMemory.Api is designed to solve these problems.
+
+---
+
+## Core Value
+
+The core value of DeveloperMemory.Api is:
+
+> Remember important information once, retrieve it only when relevant, and make it available to AI systems at the right time.
+
+The system should help AI applications move from:
+
+> Stateless responses based only on the current prompt
+
+to:
+
+> Context-aware responses informed by relevant knowledge accumulated over time.
+
+---
 
 ## Target Users
 
-- **Solo developers** using AI coding assistants who want consistent, context-aware suggestions.
-- **Small teams** who share coding standards and project knowledge but have no mechanism to inject that knowledge into AI tools.
+- **Developers** using AI coding assistants who want consistent, context-aware suggestions without repeating themselves.
+- **Teams** who share coding standards, project knowledge, and architectural decisions across AI tools.
 - **AI tool builders** who want a reusable memory layer they can integrate into their products.
+- **AI agent developers** who need persistent memory for agents that operate across sessions and tasks.
 
-## Core Value Proposition
+---
 
-Developer Memory API solves this by sitting between AI coding assistants and LLM providers as a transparent proxy. It automatically enriches every AI request with:
+## Core Responsibilities
 
-1. **Developer profiles** — Who you are, your skills, experience, and working style.
-2. **Knowledge documents** — Coding standards, architectural decisions, project rules, and technical context.
-3. **Relevant retrieval** — Matching the right knowledge to the current task, not dumping everything into every prompt.
+### Memory Capture
 
-The result: AI that understands your context without you having to repeat yourself, while respecting that your explicit instructions always take priority.
+Detect potentially valuable information from conversations and application interactions.
 
-## Core Concepts
+Examples include:
 
-### Developer Profiles
+- User preferences
+- Instructions
+- Constraints
+- Goals
+- Personal context
+- Project context
+- Technical decisions
+- Coding conventions
+- Long-term knowledge
 
-Markdown files that describe a developer's skills, experience, role, and preferences. These give the AI a baseline understanding of who it is working with.
+### Memory Classification
 
-### Knowledge Documents
+Classify memories by purpose and lifetime.
 
-Markdown files with YAML frontmatter containing coding standards, project rules, architectural decisions, and technical guidance. Documents are tagged by project and topic for retrieval.
+Types:
 
-### Context Enrichment
+- Preference
+- Instruction
+- Constraint
+- Goal
+- Personal Fact
+- Project Context
+- Technical Knowledge
+- Decision
+- Working Context
 
-The gateway intercepts OpenAI-compatible requests, searches for relevant knowledge, and appends it to the system message. The original conversation history and client instructions are preserved and take precedence.
+### Memory Lifecycle Management
 
-### Transparent Proxy
+Manage how memories change over time.
 
-The gateway exposes a standard OpenAI-compatible API (`/v1/chat/completions`). Any AI client that speaks this protocol works without modification. The gateway forwards enriched requests to any OpenAI-compatible LLM provider.
+A memory may be:
 
-## What This Is NOT
+- Active
+- Updated
+- Superseded
+- Expired
+- Archived
+- Deleted
 
-- **Not an AI model or LLM.** It does not generate responses. It enriches requests before forwarding them.
-- **Not a vector database or RAG system.** The current implementation uses keyword-based retrieval. Semantic search is a future goal.
-- **Not a replacement for your AI client.** It works alongside your existing tools (Cline, Continue, Cursor, etc.).
-- **Not an enterprise platform (yet).** The current scope is a local developer tool. Multi-user, authentication, and team features are future considerations.
-- **Not a chat interface.** It is an API gateway, not a UI.
+New information should be able to update or replace outdated information instead of endlessly creating contradictory memories.
+
+### Memory Retrieval
+
+Find and rank memories relevant to the current request.
+
+The system must avoid blindly sending all stored memories to an AI model.
+
+### Context Construction
+
+Build a token-aware context package containing the most relevant memories for an AI request.
+
+### AI Integration
+
+Expose memory capabilities to:
+
+- AI chat applications
+- AI coding assistants
+- AI agents
+- OpenAI-compatible clients
+- LLM providers
+
+---
+
+## Memory Model
+
+Memories may exist at different scopes:
+
+| Scope | Description | Example |
+|---|---|---|
+| **Global** | Applies everywhere, all users | "Always use TypeScript strict mode" |
+| **User** | Specific to a user across all projects | "I prefer functional programming" |
+| **Project** | Specific to a project or repository | "This project uses PostgreSQL" |
+| **Conversation** | Relevant only to the current conversation | "We decided to use Redis for caching" |
+| **Session** | Temporary working context | "Currently debugging the auth module" |
+| **Agent** | Specific to an AI agent's operation | "This agent handles code review" |
+
+A global preference may apply everywhere, while a project-specific decision should only influence requests related to that project.
+
+---
+
+## What This Project Is Not
+
+DeveloperMemory.Api is **not**:
+
+- A database containing every chat message
+- A system that permanently stores everything a user says
+- A replacement for an LLM
+- A vector database wrapper
+- A generic document-only RAG system
+- An IDE-specific tool
+- A provider-specific AI proxy
+
+Chat history, documents, embeddings, and vector search may be implementation tools, but they are not the core product definition.
+
+---
+
+## Architecture Direction
+
+The architecture should be centered around a **Memory Intelligence Pipeline**:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    MEMORY CAPTURE PIPELINE                   │
+│                                                             │
+│  User or AI Application                                     │
+│         ↓                                                   │
+│  Interaction Processing                                     │
+│         ↓                                                   │
+│  Memory Capture and Extraction                              │
+│         ↓                                                   │
+│  Memory Classification                                      │
+│         ↓                                                   │
+│  Memory Storage and Lifecycle Management                    │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                   MEMORY RETRIEVAL PIPELINE                  │
+│                                                             │
+│  AI Application                                             │
+│         ↓                                                   │
+│  Memory Retrieval                                           │
+│         ↓                                                   │
+│  Relevance Ranking                                          │
+│         ↓                                                   │
+│  Context Construction                                       │
+│         ↓                                                   │
+│  LLM Request Enrichment                                     │
+│         ↓                                                   │
+│  LLM Provider                                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
 
 ## Long-Term Direction
 
-The project follows a practical, incremental approach:
+DeveloperMemory.Api should become a reusable memory service that allows different AI applications and agents to share a persistent understanding of a user and their context.
 
-1. **Foundation (current):** Establish the core architecture, data formats, and a working prototype with keyword-based retrieval and OpenAI-compatible proxying.
-2. **V1 (next):** Complete a production-ready local tool with authentication, persistent storage, and improved retrieval.
-3. **V2+ (future):** Semantic search with embeddings, multi-developer support, web UI, and potential IDE integrations.
+The long-term goal is not to store the maximum amount of information.
 
-Each phase builds on the previous one. The architecture is designed to be simple now with clear extension points for future capabilities.
+The goal is to provide the **right memory**, to the **right AI system**, at the **right time**.

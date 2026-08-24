@@ -2,109 +2,77 @@
 
 ## What Is This?
 
-Developer Memory API is a **persistent context and memory gateway** for AI coding assistants. It sits between your IDE's AI client (Cline, Continue, Cursor, etc.) and OpenAI-compatible LLM providers, automatically enriching every request with your developer profile, coding standards, and project knowledge.
+Developer Memory API is a **persistent, intelligent memory layer for AI applications and agents**. It sits between AI systems and LLM providers as a Memory Intelligence Gateway, automatically enriching requests with relevant context accumulated over time.
 
-**The problem it solves:** AI assistants are stateless. They forget your preferences, ignore your coding standards, and require you to re-explain your project context in every session. Developer Memory gives AI persistent, relevant context so suggestions are consistent and informed.
+**The problem it solves:** AI models are stateless. They forget your preferences, ignore your project context, and require you to re-explain everything in every conversation. Developer Memory solves this by remembering important information once, retrieving it only when relevant, and providing it to AI systems at the right time.
+
+**The vision:** Move AI from stateless responses based only on the current prompt to context-aware responses informed by relevant knowledge accumulated over time.
 
 ## How It Works
 
 ```
-IDE AI Client (Cline, Continue, etc.)
-        |
-        v
-DeveloperMemory.Api  (OpenAI-compatible gateway)
-        |
-        v
-Load Developer Profile + Search Knowledge
-        |
-        v
-Enrich system message with context
-        |
-        v
-Forward to LLM Provider (OpenAI, FreeLLM, etc.)
-        |
-        v
-Response back to IDE AI Client
+AI Application / Agent
+        ↓
+DeveloperMemory.Api  (Memory Intelligence Gateway)
+        ↓
+Memory Retrieval + Relevance Ranking
+        ↓
+Context Construction
+        ↓
+LLM Request Enrichment
+        ↓
+Forward to LLM Provider
+        ↓
+Response back to AI Application
 ```
 
-The gateway is transparent — it speaks the standard OpenAI API protocol, so your AI client works without modification.
-
-## Project Status
-
-**Current state: Design and documentation complete. Implementation not yet started.**
-
-The repository contains:
-- Architecture design and API contract specifications
-- Data format specifications for knowledge documents and developer profiles
-- Example knowledge documents and developer profiles
-- Coding standards and extension guides
-
-See [CURRENT_STATUS.md](CURRENT_STATUS.md) for details.
-
-## Design Documents
-
-| Document | Purpose |
-|---|---|
-| [PROJECT_VISION.md](PROJECT_VISION.md) | Mission, problem statement, target users, core value |
-| [CURRENT_STATUS.md](CURRENT_STATUS.md) | What exists vs what is planned |
-| [ROADMAP.md](ROADMAP.md) | Phased development plan |
-| [KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md) | YAML frontmatter format for documents and profiles |
-| [CHANGELOG.md](CHANGELOG.md) | Design milestone history |
-| [AGENTS.md](AGENTS.md) | AI agent coding guide for implementation |
-
-## Planned Architecture
-
-The intended architecture is a layered .NET 10.0 application:
-
-- **Presentation layer:** OpenAI-compatible controllers and error handling middleware
-- **Application layer:** Prompt builder, knowledge retrieval, profile loading, LLM client
-- **Domain layer:** Data models for knowledge documents, developer profiles, and OpenAI types
-- **Infrastructure layer:** Configuration, logging, file system access
+The gateway is transparent — it speaks the standard OpenAI API protocol, so any AI client works without modification.
 
 ## Core Concepts
 
-### Developer Profiles
+| Concept | Description |
+|---|---|
+| **Memory Capture** | Detect valuable information from interactions (preferences, decisions, constraints, goals) |
+| **Memory Classification** | Categorize by type (preference, instruction, constraint, goal, decision, etc.) |
+| **Memory Lifecycle** | Track state changes (active → updated → superseded → expired → archived) |
+| **Memory Retrieval** | Find and rank memories relevant to the current request |
+| **Context Construction** | Build token-aware context packages for AI requests |
+| **Memory Scopes** | Global, User, Project, Conversation, Session, Agent |
 
-Markdown files describing who you are — your skills, experience, role, and preferences. Example:
+## Current Implementation
 
-```markdown
----
-name: Jane Smith
-role: Senior Backend Developer
-skills: C#, ASP.NET Core, Docker, PostgreSQL
-experience: 8 years
----
+This repository contains a **working .NET 10.0 implementation** of the memory gateway's core infrastructure:
 
-Senior backend developer specializing in the .NET ecosystem...
-```
+### What Works Now
 
-### Knowledge Documents
+| Feature | Status | Description |
+|---|---|---|
+| OpenAI-compatible API | ✅ Working | `/v1/chat/completions` with streaming and non-streaming |
+| Auto model selection | ✅ Working | Detects plan vs build mode, routes to optimal model |
+| Developer profiles | ✅ Working | Markdown profiles with YAML frontmatter |
+| Knowledge base | ✅ Working | Markdown knowledge documents with keyword relevance scoring |
+| Context enrichment | ✅ Working | Appends profile + knowledge to system messages |
+| LLM provider proxy | ✅ Working | Forwards to any OpenAI-compatible provider |
+| Token tracking | ✅ Working | Estimates tokens at three pipeline stages |
+| Management API | ✅ Working | CRUD for knowledge documents and profiles |
+| Streaming | ✅ Working | Full SSE streaming support |
+| Error handling | ✅ Working | OpenAI-compatible error responses |
+| Request logging | ✅ Working | Diagnostic middleware and daily log files |
 
-Markdown files with YAML frontmatter containing coding standards, project rules, and technical guidance. Example:
+### What's Not Yet Implemented
 
-```markdown
----
-title: "Code Generation Rules"
-project: "MyApp"
-tags: coding-standards, quality
----
+| Feature | Status | Description |
+|---|---|---|
+| Memory capture pipeline | ❌ Not started | Automatic extraction from conversations |
+| Memory classification | ❌ Not started | Categorization by type and lifetime |
+| Memory lifecycle management | ❌ Not started | State tracking (active, superseded, expired) |
+| Memory scopes | ❌ Partial | Current scopes: global, project. Missing: user, session, agent |
+| Semantic search | ❌ Not started | Embedding-based retrieval |
+| Persistent storage | ❌ Not started | Currently in-memory only |
+| Authentication | ❌ Not started | No auth, local tool only |
+| Multi-developer support | ❌ Not started | Single-user only |
 
-# Code Generation Rules
-Generated code should be production-quality...
-```
-
-### Context Enrichment
-
-When a request arrives, the gateway:
-1. Loads your developer profile
-2. Searches knowledge for documents relevant to the current task
-3. Appends profile + knowledge to the system message
-4. Preserves your original conversation history
-5. Forwards the enriched request to the LLM provider
-
-Your explicit instructions always take priority over injected context.
-
-## Quick Start (When Implementation Begins)
+## Quick Start
 
 ```bash
 cd DeveloperMemory.Api
@@ -112,25 +80,64 @@ dotnet restore
 dotnet run
 ```
 
-The API will be available at:
-- **HTTP:** `http://localhost:5041`
-- **Swagger UI:** `/swagger` (Development mode)
-- **Health Check:** `GET /health`
+- **API**: `http://localhost:5041` / `https://localhost:7144`
+- **Swagger UI**: `/swagger` (Development mode)
+- **Health Check**: `GET /health`
 
-## Cline Integration (Planned)
+## Cline Integration
+
+Configure Cline (or any OpenAI-compatible client) with:
 
 | Setting | Value |
 |---|---|
 | API Base URL | `http://localhost:5041/v1` |
-| Model | Any value (gateway handles selection) |
-| API Key | Any value (not validated in local mode) |
+| Model | Any value (gateway auto-selects based on mode) |
+| API Key | Any value (not validated) |
+
+## Configuration
+
+Set the downstream LLM provider in `appsettings.json`:
+
+```json
+{
+  "AppSettings": {
+    "FreeLlmApi": {
+      "BaseUrl": "http://localhost:3001/v1",
+      "ApiKey": "",
+      "DefaultModel": "auto"
+    },
+    "ModelSelection": {
+      "AutoSelectModel": true,
+      "PlanModel": "auto:smart",
+      "BuildModel": "auto:fast"
+    }
+  }
+}
+```
+
+Or use environment variables: `AppSettings__FreeLlmApi__BaseUrl`, `AppSettings__FreeLlmApi__ApiKey`, etc.
+
+## Documentation
+
+| Document | Purpose |
+|---|---|
+| [PROJECT_VISION.md](PROJECT_VISION.md) | Vision, problem statement, core responsibilities, memory model |
+| [CURRENT_STATUS.md](CURRENT_STATUS.md) | What works, what's planned, known limitations |
+| [ROADMAP.md](ROADMAP.md) | Phased development plan toward full memory intelligence |
+| [CLAUDE.md](CLAUDE.md) | Complete technical reference: architecture, API, data models |
+| [AGENTS.md](AGENTS.md) | AI agent coding guide |
+| [KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md) | YAML frontmatter format for documents and profiles |
 
 ## Limitations
 
-- No source code yet — this is a design-phase repository
-- Keyword-based retrieval planned for v1 (semantic search is v2+)
-- Local tool only — no authentication or multi-user support planned initially
-- No persistent storage in v1 (in-memory, requires reindex after changes)
+- **No authentication** — CORS is open, no auth middleware. Local development only.
+- **Keyword search only** — No semantic/vector search. Relevance scoring is text-based.
+- **In-memory cache** — Documents loaded on startup. Reindex via `POST /api/Knowledge/reindex`.
+- **No memory capture** — Currently requires manual knowledge creation. Automatic extraction is planned.
+- **No memory lifecycle** — No automatic update, superseding, or expiration of memories.
+- **Single scope** — Only global and project scopes implemented. User, session, and agent scopes are planned.
+- **No function/tool calling** — Tool call messages are forwarded but not processed.
+- **Approximate token counts** — ~4 chars/token heuristic.
 
 ## License
 

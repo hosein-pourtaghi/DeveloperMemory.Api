@@ -2,103 +2,185 @@
 
 **Last reviewed:** August 24, 2026
 
-This document provides an honest assessment of what currently exists in the repository versus what is planned.
+---
+
+## Vision vs. Reality
+
+The project vision describes a **Memory Intelligence Gateway** — a system that captures, classifies, manages, and retrieves memories for AI applications. The current implementation provides the **foundational infrastructure** for this vision but has not yet implemented the core memory intelligence capabilities.
+
+### What the Vision Requires
+
+| Capability | Status |
+|---|---|
+| Memory Capture | ❌ Not implemented |
+| Memory Classification | ❌ Not implemented |
+| Memory Lifecycle Management | ❌ Not implemented |
+| Memory Retrieval (semantic) | ❌ Not implemented |
+| Memory Scopes (user, session, agent) | ❌ Not implemented |
+| Context Construction | ⚠️ Basic implementation |
+| LLM Proxy | ✅ Fully implemented |
+| Management API | ✅ Fully implemented |
+
+### What the Current Implementation Provides
+
+The current codebase is a **working OpenAI-compatible proxy** with:
+
+1. **LLM proxying** — Transparent forwarding to any OpenAI-compatible provider
+2. **Static knowledge injection** — Manual knowledge documents appended to system messages
+3. **Profile injection** — Developer profiles appended to system messages
+4. **Keyword-based retrieval** — Simple text matching for relevance scoring
+5. **Management API** — CRUD for knowledge documents and profiles
+
+This is **not yet a Memory Intelligence Gateway**. It is a **knowledge-enriched LLM proxy** that serves as the foundation for building the full memory system.
 
 ---
 
 ## Repository Reality
 
-**The repository currently contains only documentation and example content.** There is no source code — no `.cs` files, no `.csproj`, no `Program.cs`, no `appsettings.json`, no `.sln` file. The entire repository consists of:
+**Source code exists.** The repository contains a fully implemented .NET 10.0 application.
 
-- Markdown documentation files describing the intended architecture
-- Example knowledge documents (Markdown with YAML frontmatter)
-- Example developer profiles (Markdown with YAML frontmatter)
-
-All previously existing documentation described a fully implemented .NET 10.0 application. This was inaccurate and has been corrected.
-
----
-
-## What Currently Exists
-
-### Documentation
-- `README.md` — Project overview, architecture, and quick start guide
-- `PROJECT_VISION.md` — Mission, problem statement, target users, and scope
-- `CURRENT_STATUS.md` — This document
-- `ROADMAP.md` — Phased development plan
-- `KNOWLEDGE_FORMAT.md` — YAML frontmatter format specification for knowledge documents and profiles
-- `CHANGELOG.md` — Version history (design milestones, not code releases)
-- `AGENTS.md` — AI agent coding guide for when implementation begins
-
-### Example Content
-- `Knowledge/ai-agent-rules.md` — Example: global rules for AI coding agent behavior
-- `Knowledge/code-generation-rules.md` — Example: standards for AI-generated code quality
-- `Profiles/developer-profile.md` — Example: full-stack developer profile
-- `Profiles/development-preferences.md` — Example: development preferences and principles
-
-### Data Format Specifications
-- Knowledge document format: Markdown + YAML frontmatter (`title`, `project`, `tags`)
-- Developer profile format: Markdown + YAML frontmatter (`name`, `role`, `skills`, `experience`)
+**Files in the repository:**
+- 20 C# source files (controllers, services, models, middleware, configuration)
+- 1 .csproj project file (targeting .NET 10.0)
+- 1 .sln solution file
+- Configuration files (appsettings.json, launchSettings.json)
+- 9 Markdown documentation files
+- 2 example knowledge documents
+- 2 example developer profiles
 
 ---
 
-## What Is NOT Implemented
+## Implementation Inventory
 
-The following features are described in legacy documentation but do not exist as code:
+### Working — Core Gateway Infrastructure
 
-- OpenAI-compatible gateway (`/v1/chat/completions`)
-- Auto model selection and mode detection
-- Token tracking and logging
-- Knowledge document search and retrieval
-- Developer profile loading and caching
-- Prompt enrichment and context injection
-- LLM provider proxying (FreeLlmApiClient)
-- Streaming response forwarding
-- Management API endpoints (`/api/Knowledge`, `/api/Profiles`)
-- Error handling middleware
-- Configuration system
+| Component | File | Status | Notes |
+|---|---|---|---|
+| `OpenAIChatCompletionController` | `Controllers/OpenAIChatCompletionController.cs` | ✅ Working | Handles `/v1/chat/completions`, `/v1/models`, `/v1/models/{id}` |
+| `KnowledgeController` | `Controllers/KnowledgeController.cs` | ✅ Working | Search, list, get, create, reindex |
+| `ProfilesController` | `Controllers/ProfilesController.cs` | ✅ Working | List, load from file |
+| `KnowledgeService` | `Services/KnowledgeService.cs` | ✅ Working | Markdown parsing, keyword search, document creation |
+| `ProfileService` | `Services/ProfileService.cs` | ✅ Working | Markdown parsing, profile loading |
+| `PromptBuilder` | `Services/PromptBuilder.cs` | ✅ Working | Context enrichment with instruction precedence |
+| `FreeLlmApiClient` | `Services/FreeLlmApiClient.cs` | ✅ Working | Streaming + non-streaming, model resolution, error handling |
+| `ModeDetector` | `Services/ModeDetector.cs` | ✅ Working | Plan vs build mode detection |
+| `TokenEstimator` | `Services/TokenEstimator.cs` | ✅ Working | ~4 chars/token heuristic |
+| `RequestLogger` | `Services/RequestLogger.cs` | ✅ Working | Three-stage token logging |
 
-**None of these features have been coded.** They are design goals, not implemented functionality.
+### Working — Models and Infrastructure
 
----
+| Component | File | Status |
+|---|---|---|
+| OpenAI request/response models | `Models/OpenAIRequestResponse.cs` | ✅ Working |
+| `MessageContentConverter` | `Models/MessageContentConverter.cs` | ✅ Working |
+| `KnowledgeDocument` | `Models/KnowledgeDocument.cs` | ✅ Working |
+| `DeveloperProfile` | `Models/DeveloperProfile.cs` | ✅ Working |
+| `SearchResult` | `Models/SearchResult.cs` | ✅ Working |
+| `PromptRequest` | `Models/PromptRequest.cs` | ✅ Working |
+| `AppSettings` | `Infrastructure/Configuration/AppSettings.cs` | ✅ Working |
+| `GlobalExceptionMiddleware` | `Infrastructure/Middleware/GlobalExceptionMiddleware.cs` | ✅ Working |
+| `RequestLoggingMiddleware` | `Infrastructure/Middleware/RequestLoggingMiddleware.cs` | ✅ Working |
+| `Program.cs` | `Program.cs` | ✅ Working |
 
-## Design Assets Available
+### Bugs Fixed This Session
 
-The repository does contain valuable design work that can guide implementation:
-
-1. **Architecture design** — Layered architecture with clear separation of concerns (Presentation → Application → Domain → Infrastructure)
-2. **API contract design** — OpenAI-compatible request/response models
-3. **Data format specification** — YAML frontmatter format for knowledge and profiles
-4. **Retrieval algorithm design** — Keyword-based relevance scoring (title +0.5, content +0.3, project +0.1, tags +0.1)
-5. **Configuration schema** — `appsettings.json` structure for provider, paths, and model selection
-6. **Dependency injection plan** — Service registration with appropriate lifetimes
-7. **Coding standards** — Naming conventions, C# patterns, controller and service conventions
-8. **Extension guide** — How to add new modes and knowledge sources
-
----
-
-## Corrected Terminology
-
-Previous documentation used inconsistent terminology. The following terms are now standardized:
-
-| Term | Definition |
-|---|---|
-| **Gateway** | The system acts as an OpenAI-compatible proxy that enriches requests |
-| **Context enrichment** | The process of adding profile and knowledge context to AI requests |
-| **Knowledge document** | A Markdown file with YAML frontmatter containing technical guidance |
-| **Developer profile** | A Markdown file with YAML frontmatter describing a developer |
-| **Retrieval** | The process of selecting relevant knowledge for a given request |
-| **Prompt construction** | Building the enriched system message from profile + knowledge + original content |
-| **Transparent proxy** | Works with any OpenAI-compatible client without modification |
+1. **Frontmatter parsing colon bug** — Both `KnowledgeService` and `ProfileService` truncated values containing colons. Fixed.
+2. **Knowledge file format mismatch** — Existing files used wrong frontmatter fields. Fixed.
+3. **Hardcoded API key** — Removed from `appsettings.json`.
 
 ---
 
-## Known Limitations (Design Stage)
+## What's Missing for the Vision
 
-Even in the planned implementation, these limitations are acknowledged:
+The following capabilities are required by the vision but not yet implemented:
 
-- No authentication or multi-user support (local tool only)
-- Keyword-based retrieval only (no semantic/vector search in v1)
-- In-memory document cache (requires reindex after changes)
-- No function/tool call processing (forwarded but not interpreted)
-- Approximate token counting (~4 chars/token heuristic)
-- CORS open (development only)
+### Memory Capture Pipeline
+
+**Required:** Automatic extraction of valuable information from conversations and interactions.
+
+**Current state:** Knowledge must be manually created via the management API or by adding Markdown files.
+
+**What's needed:**
+- Conversation analysis to detect valuable information
+- Extraction of preferences, decisions, constraints, goals
+- Automatic memory creation from interactions
+
+### Memory Classification
+
+**Required:** Categorize memories by type (preference, instruction, constraint, goal, decision, etc.).
+
+**Current state:** No classification. All knowledge is treated as generic documents.
+
+**What's needed:**
+- Memory type taxonomy (preference, instruction, constraint, goal, personal fact, project context, technical knowledge, decision, working context)
+- Automatic classification of extracted memories
+- Classification-aware retrieval
+
+### Memory Lifecycle Management
+
+**Required:** Track and manage how memories change over time (active → updated → superseded → expired → archived).
+
+**Current state:** No lifecycle. Documents are static until manually replaced.
+
+**What's needed:**
+- Memory state tracking (active, updated, superseded, expired, archived, deleted)
+- Automatic superseding when new information contradicts old
+- Expiration and archival policies
+- Change history tracking
+
+### Memory Scopes
+
+**Required:** Global, User, Project, Conversation, Session, Agent scopes.
+
+**Current state:** Only global and project scopes (via `scope` field in frontmatter).
+
+**What's needed:**
+- User-scoped memories (persistent per user)
+- Conversation-scoped memories (relevant only to current conversation)
+- Session-scoped memories (temporary working context)
+- Agent-scoped memories (specific to an AI agent's operation)
+- Scope-aware retrieval (only return memories relevant to the current scope)
+
+### Semantic Search
+
+**Required:** Embedding-based retrieval for finding semantically relevant memories.
+
+**Current state:** Keyword-based text matching only.
+
+**What's needed:**
+- Embedding generation for memories and queries
+- Vector similarity search
+- Hybrid retrieval (keyword + semantic)
+- Relevance ranking
+
+### Persistent Storage
+
+**Required:** Memories survive server restarts.
+
+**Current state:** In-memory only. All memories lost on restart.
+
+**What's needed:**
+- Database backing (SQLite for local, PostgreSQL for production)
+- Persistent storage for memories, profiles, and knowledge
+- Migration and versioning
+
+---
+
+## Build Status
+
+**Cannot verify in this environment** — .NET SDK is not available in the Freebuff sandbox. The code should build with `dotnet restore && dotnet build` in an environment with .NET 10.0 SDK installed.
+
+---
+
+## Known Limitations
+
+1. **No .NET SDK in sandbox** — Build verification not possible here
+2. **No tests** — The project has no test project or test files
+3. **In-memory document cache** — Documents loaded at startup; `POST /api/Knowledge/reindex` required after changes
+4. **Ephemeral IDs** — Document/profile GUIDs regenerate on each load; use `FilePath` for stable identification
+5. **CORS wide open** — `AllowAnyOrigin()` — development only
+6. **Approximate token counts** — ~4 chars/token heuristic, not billing-accurate
+7. **No memory capture** — Requires manual knowledge creation
+8. **No memory lifecycle** — No automatic update or expiration
+9. **No semantic search** — Keyword matching only
+10. **No persistent storage** — All data lost on restart

@@ -109,6 +109,14 @@ DeveloperMemory.Api/
 
 6. **Multimodal content**: Array content is stored as JSON string in `Message.Content`. It's forwarded correctly but DeveloperMemory doesn't parse individual content parts.
 
+## Related Documentation
+
+- [PROJECT_VISION.md](PROJECT_VISION.md) — Mission, problem statement, core concepts
+- [CURRENT_STATUS.md](CURRENT_STATUS.md) — Implementation inventory and status
+- [ROADMAP.md](ROADMAP.md) — Development roadmap
+- [CLAUDE.md](CLAUDE.md) — Complete project reference
+- [KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md) — Frontmatter format reference
+
 ## Testing Checklist
 
 - [ ] `dotnet build` succeeds with 0 errors
@@ -119,3 +127,6 @@ DeveloperMemory.Api/
 - [ ] `GET /v1/models/{id}` returns model or 404
 - [ ] Token metrics appear in console and log file
 - [ ] Auto model selection routes plan vs build correctly
+- [ ] `GET /api/Knowledge/documents` returns loaded knowledge documents
+- [ ] `GET /api/Knowledge?query=dotnet` returns relevant results
+- [ ] `GET /api/Profiles` returns loaded profiles

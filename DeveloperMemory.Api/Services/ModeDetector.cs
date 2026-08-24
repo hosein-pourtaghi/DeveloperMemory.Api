@@ -23,24 +23,6 @@ public static class ModeDetector
         Unknown
     }
 
-    // Keywords that indicate Cline is in build/act mode (tool execution phase)
-    private static readonly string[] BuildModeIndicators =
-    [
-        // Cline's system prompt for build mode includes tool definitions
-        "You have access to a set of tools that are executed upon the user's approval",
-        "You can use one tool per message",
-        "execute_command",
-        "write_to_file",
-        "replace_in_file",
-        "read_file",
-        "list_files",
-        "ask_followup_question",
-        // Plan mode indicators (Cline's planning system prompt)
-        "TASK",
-        "Checklist",
-        "task_progress"
-    ];
-
     /// <summary>
     /// Detects the task mode from the request messages.
     /// Checks the system message content for mode-specific indicators.

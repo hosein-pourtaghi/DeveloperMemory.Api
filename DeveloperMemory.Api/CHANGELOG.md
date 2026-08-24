@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.2.0] - 2026-08-24
+
+### Repository Audit & Documentation Alignment
+- **Full codebase audit**: Verified actual implementation state (contrary to previous documentation-only claims)
+- **Implementation inventory**: All 22 source files catalogued with working/partial/broken classification
+- **Code quality fixes**:
+  - Removed unused and misleading `BuildModeIndicators` array in `ModeDetector`
+  - Fixed frontmatter parser to handle `name` as alias for `title` in knowledge documents
+  - Fixed YAML escaping in `CreateDocumentAsync` for titles with special characters
+
+### New Documentation
+- **PROJECT_VISION.md**: Mission, problem statement, target users, core concepts, long-term direction
+- **CURRENT_STATUS.md**: Actual implementation inventory based on code audit
+- **ROADMAP.md**: Completed work, next steps, and future/V2+ plans
+
+### Documentation Updates
+- **README.md**: Updated to reflect actual implementation status, added links to new docs
+- **CLAUDE.md**: Added memory model section, references to new docs, expanded limitations
+- **AGENTS.md**: Added testing checklist items for management APIs, references to new docs
+
 ## [2.1.0] - 2026-08-21
 
 ### Auto Model Selection

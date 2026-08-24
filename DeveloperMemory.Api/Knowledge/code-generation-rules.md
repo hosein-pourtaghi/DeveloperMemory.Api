@@ -1,6 +1,7 @@
 ---
-name: Code Generation Rules
-scope: global
+title: "Code Generation Rules"
+project: ""
+tags: code-generation, quality, standards
 ---
 
 # Code Generation Rules

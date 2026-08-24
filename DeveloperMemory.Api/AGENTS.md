@@ -1,5 +1,11 @@
 # AGENTS.md — AI Agent Coding Guide
 
+## Current State
+
+This repository contains a working .NET 10.0 implementation of the DeveloperMemory.Api gateway. The source code compiles (when a .NET SDK is available), serves HTTP requests, and has been audited and repaired (as of August 2026).
+
+When working in this repository, treat the source code as the primary truth. The design documents in this directory are specifications that may lag behind the implementation.
+
 ## Project Structure
 
 ```
@@ -35,24 +41,6 @@ DeveloperMemory.Api/
 ├── appsettings.json
 └── appsettings.Development.json
 ```
-
-## Key Features
-
-### Auto Model Selection
-- `ModeDetector` analyzes Cline's system prompt to detect plan vs build mode
-- `ModelSelectionSettings` configures which model to use for each mode
-- When `AutoSelectModel: true`, the client's model choice is overridden
-
-### Token Tracking
-- `TokenEstimator` provides ~4 chars/token estimation for logging
-- `RequestLogger` logs three stages: INCOMING → ENRICHED → RESPONSE
-- Daily log files at `logs/requests/requests-YYYY-MM-DD.log`
-- Console output via Serilog (look for `TokenSummary:` lines)
-
-### Cline Compatibility
-- `MessageContentConverter` handles both string and array `content` fields
-- `InvalidModelStateResponseFactory` returns OpenAI-compatible errors for bad requests
-- `RequestLoggingMiddleware` captures raw request bodies for debugging
 
 ## Coding Standards
 
@@ -92,7 +80,7 @@ DeveloperMemory.Api/
 
 ### Adding a New Knowledge Source
 1. Create `.md` file in `Knowledge/` with YAML frontmatter
-2. Use `title`, `project`, `tags` fields
+2. Use `name` and `scope` fields (see [KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md))
 3. Call `POST /api/Knowledge/reindex` to reload
 
 ## Key Gotchas

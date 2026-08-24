@@ -1,17 +1,21 @@
 # Developer Memory API
 
-## Overview
+## What Is This?
 
-Developer Memory API is an **OpenAI-compatible Developer Memory Gateway** — a .NET 10.0 middleware that sits between AI coding assistants (such as Cline) and OpenAI-compatible LLM providers. It enriches AI requests with persistent developer preferences, coding guidelines, project knowledge, and relevant long-term memory.
+Developer Memory API is a **persistent, intelligent memory layer for AI applications and agents**. It sits between AI systems and LLM providers as a Memory Intelligence Gateway, automatically enriching requests with relevant context accumulated over time.
+
+**The problem it solves:** AI models are stateless. They forget your preferences, ignore your project context, and require you to re-explain everything in every conversation. Developer Memory solves this by remembering important information once, retrieving it only when relevant, and providing it to AI systems at the right time.
+
+**The vision:** Move AI from stateless responses based only on the current prompt to context-aware responses informed by relevant knowledge accumulated over time.
 
 **The core problem it solves:** AI coding assistants start every conversation with zero context. DeveloperMemory ensures they always have access to your preferences, project rules, and relevant knowledge — automatically.
 
 ## How It Works
 
 ```
-IDE AI Client / Cline
+AI Application / Agent
         ↓
-DeveloperMemory.Api  (OpenAI-compatible gateway)
+DeveloperMemory.Api  (Memory Intelligence Gateway)
         ↓
 Load Developer Profile(s)
         ↓
@@ -21,11 +25,11 @@ Assemble Context & Enrich System Message
         ↓
 Mode Detection (Plan vs Build) → Auto Model Selection
         ↓
-OpenAI-Compatible Provider (FreeLLM, OpenAI, etc.)
+LLM Request Enrichment
         ↓
-Streaming or Standard Response
+Forward to LLM Provider
         ↓
-IDE AI Client / Cline
+Response back to AI Application
 ```
 
 ## Current Implementation Status
@@ -68,22 +72,18 @@ Configure Cline (or any OpenAI-compatible client) with:
 | Model | Any value (gateway auto-selects based on mode) |
 | API Key | Any value (not validated) |
 
-The gateway automatically detects whether Cline is in **plan mode** (reasoning/analysis) or **build mode** (code implementation) and routes to the best model for each task.
+## Configuration
 
-## Auto Model Selection
+Set the downstream LLM provider in `appsettings.json`:
 
-When `AutoSelectModel` is enabled, the gateway ignores the client's requested model and selects the optimal model based on detected mode:
-
-| Mode | Detection | Default Model | Purpose |
-|---|---|---|---|
-| **Plan** | System prompt contains planning indicators (`# TASK`, `Checklist`, `Goal:`) | `auto:smart` | Complex reasoning, architecture planning |
-| **Build** | System prompt contains tool definitions (`execute_command`, `write_to_file`) | `auto:fast` | Code implementation, tool execution |
-| **Unknown** | No recognizable indicators | Falls back to configured `DefaultModel` | General queries |
-
-Configure in `appsettings.json`:
 ```json
 {
   "AppSettings": {
+    "FreeLlmApi": {
+      "BaseUrl": "http://localhost:3001/v1",
+      "ApiKey": "",
+      "DefaultModel": "auto"
+    },
     "ModelSelection": {
       "AutoSelectModel": true,
       "PlanModel": "auto:smart",
@@ -93,52 +93,7 @@ Configure in `appsettings.json`:
 }
 ```
 
-Set `AutoSelectModel: false` to let the client control model selection.
-
-## Token Tracking
-
-Every request is logged with token metrics at three stages for comparison:
-
-```
-TokenSummary: incoming=~1234 | enriched=~1567 | response=~456 | provider=456 | enrichment_overhead=~333 tokens
-```
-
-| Metric | Description |
-|---|---|
-| `incoming_tokens` | Estimated tokens in Cline's original request |
-| `enriched_tokens` | Estimated tokens after DeveloperMemory adds profile + knowledge context |
-| `response_tokens` | Estimated tokens in the LLM response |
-| `provider_tokens` | Actual token count reported by the provider (if available) |
-| `enrichment_overhead` | `enriched - incoming` — the cost of added context |
-
-Logs are written to:
-- **Console**: Via Serilog (look for `TokenSummary:` lines)
-- **File**: `logs/requests/requests-YYYY-MM-DD.log` (daily files)
-
-## OpenAI-Compatible Endpoints
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/v1/chat/completions` | POST | Chat completions (streaming + non-streaming) |
-| `/v1/models` | GET | List available models |
-| `/v1/models/{modelId}` | GET | Get specific model details |
-
-## Management Endpoints
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/Knowledge` | GET | Search knowledge base |
-| `/api/Knowledge/documents` | GET | List all documents |
-| `/api/Knowledge/{id}` | GET | Get document by ID |
-| `/api/Knowledge` | POST | Create a new document |
-| `/api/Knowledge/reindex` | POST | Reindex all documents |
-| `/api/Profiles` | GET | List developer profiles |
-| `/api/Profiles` | POST | Load profile from file |
-| `/health` | GET | Health check |
-
-## Streaming Support
-
-DeveloperMemory fully supports OpenAI-compatible streaming via Server-Sent Events (SSE). When a client requests `stream: true`, the response from the downstream provider is forwarded directly to the client without buffering.
+Or use environment variables: `AppSettings__FreeLlmApi__BaseUrl`, `AppSettings__FreeLlmApi__ApiKey`, etc.
 
 ## Documentation
 

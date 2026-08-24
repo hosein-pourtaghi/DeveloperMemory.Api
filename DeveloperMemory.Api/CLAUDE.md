@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-DeveloperMemory.Api is an **OpenAI-compatible Developer Memory Gateway** built on .NET 10.0. It sits between AI coding assistants (Cline, Continue, etc.) and OpenAI-compatible LLM providers, enriching requests with persistent developer preferences, coding guidelines, project knowledge, and relevant long-term memory.
+DeveloperMemory.Api is a **persistent, intelligent memory layer for AI applications and agents**. It enables AI systems to remember relevant information about a user, their preferences, goals, projects, decisions, and previous interactions across conversations.
 
 **Core purpose:** Prevent developers and AI coding assistants from repeatedly needing to rediscover or manually provide important context.
 
@@ -22,37 +22,120 @@ DeveloperMemory.Api is an **OpenAI-compatible Developer Memory Gateway** built o
 
 ## Architecture
 
-### Request Flow
+### Target Architecture — Memory Intelligence Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    MEMORY CAPTURE PIPELINE                   │
+│                                                             │
+│  User or AI Application                                     │
+│         ↓                                                   │
+│  Interaction Processing                                     │
+│         ↓                                                   │
+│  Memory Capture and Extraction                              │
+│         ↓                                                   │
+│  Memory Classification                                      │
+│         ↓                                                   │
+│  Memory Storage and Lifecycle Management                    │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                   MEMORY RETRIEVAL PIPELINE                  │
+│                                                             │
+│  AI Application                                             │
+│         ↓                                                   │
+│  Memory Retrieval                                           │
+│         ↓                                                   │
+│  Relevance Ranking                                          │
+│         ↓                                                   │
+│  Context Construction                                       │
+│         ↓                                                   │
+│  LLM Request Enrichment                                     │
+│         ↓                                                   │
+│  LLM Provider                                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Current Architecture (Working)
 
 ```
 IDE AI Client / Cline
-        ↓
+        |
+        v
 DeveloperMemory.Api
-        ↓
+        |
+        v
 Request Validation / Normalization
-        ↓
+        |
+        v
 Load Developer Profile + Search Knowledge
-        ↓
+        |
+        v
 Prompt/Context Enrichment (preserves message history)
-        ↓
+        |
+        v
 OpenAI-Compatible Provider
-        ↓
+        |
+        v
 Streaming (SSE) or Standard Response
-        ↓
+        |
+        v
 IDE AI Client / Cline
 ```
 
 ### Layered Architecture
 
 ```
-Presentation    →  Controllers (OpenAIChatCompletionController, KnowledgeController, ProfilesController)
-                  Middleware  (GlobalExceptionMiddleware)
-Application     →  Services (KnowledgeService, ProfileService, PromptBuilder, FreeLlmApiClient)
-Domain          →  Models (KnowledgeDocument, DeveloperProfile, SearchResult, OpenAI* types)
-Infrastructure  →  Configuration (AppSettings), Logging (Serilog)
+Presentation    ->  Controllers (OpenAIChatCompletionController, KnowledgeController, ProfilesController)
+                  Middleware  (GlobalExceptionMiddleware, RequestLoggingMiddleware)
+Application     ->  Services (KnowledgeService, ProfileService, PromptBuilder, FreeLlmApiClient, TokenEstimator, RequestLogger, ModeDetector)
+Domain          ->  Models (KnowledgeDocument, DeveloperProfile, SearchResult, OpenAI* types)
+Infrastructure  ->  Configuration (AppSettings), Logging (Serilog)
 ```
 
-### Dependency Injection
+---
+
+## Memory Model (Target)
+
+### Memory Types
+
+| Type | Description | Example |
+|---|---|---|
+| `Preference` | User's preferred way of doing things | "I prefer functional programming" |
+| `Instruction` | Explicit instruction to follow | "Always use TypeScript strict mode" |
+| `Constraint` | Limitation or restriction | "Never use console.log in production" |
+| `Goal` | What the user is trying to achieve | "Building a real-time chat app" |
+| `PersonalFact` | Information about the user | "I'm a senior backend developer" |
+| `ProjectContext` | Information about a specific project | "This project uses PostgreSQL" |
+| `TechnicalKnowledge` | Technical information | "The API uses JWT for authentication" |
+| `Decision` | A decision that was made | "We chose Redis for caching" |
+| `WorkingContext` | Temporary context for current work | "Currently debugging the auth module" |
+
+### Memory States
+
+| State | Description |
+|---|---|
+| `Active` | Currently valid and available for retrieval |
+| `Updated` | Has been modified (previous version superseded) |
+| `Superseded` | Replaced by newer information |
+| `Expired` | Past its expiration date |
+| `Archived` | No longer active but preserved for history |
+| `Deleted` | Removed from the system |
+
+### Memory Scopes
+
+| Scope | Description | Lifetime |
+|---|---|---|
+| `Global` | Applies everywhere | Permanent |
+| `User` | Specific to a user | Permanent (until deleted) |
+| `Project` | Specific to a project | Permanent (until deleted) |
+| `Conversation` | Relevant only to current conversation | End of conversation |
+| `Session` | Temporary working context | End of session |
+| `Agent` | Specific to an AI agent | Agent lifetime |
+
+---
+
+## Dependency Injection
 
 | Registration | Type | Lifetime |
 |---|---|---|
@@ -60,41 +143,21 @@ Infrastructure  →  Configuration (AppSettings), Logging (Serilog)
 | `KnowledgeService` | Singleton | In-memory document index |
 | `PromptBuilder` | Singleton | Stateless prompt construction |
 | `FreeLlmApiClient` | HttpClient | Transient (via `AddHttpClient<T>`) |
-| `AppSettings` | Options | Bound from `appsettings.json` → `AppSettings` section |
+| `TokenEstimator` | Singleton | Stateless token estimation |
+| `RequestLogger` | Singleton | Stateless logging |
+| `ModeDetector` | Singleton | Stateless mode detection |
+| `AppSettings` | Options | Bound from `appsettings.json` -> `AppSettings` section |
 
-### Key Components
+---
 
-**OpenAIChatCompletionController** — Thin controller handling `/v1/chat/completions`, `/v1/models`, and `/v1/models/{modelId}`. Delegates all business logic to services.
-
-**PromptBuilder** — Enriches OpenAI requests with developer profile and knowledge context. Uses `BuildEnrichedRequest()` which preserves the original conversation history and injects context into the system message. Legacy `BuildPrompt()` method retained for backward compatibility.
-
-**FreeLlmApiClient** — Provider-agnostic HTTP client for OpenAI-compatible APIs. Supports streaming (`SendStreamingCompletionAsync`) and non-streaming (`SendCompletionAsync`). Uses `ResponseHeadersRead` for streaming to avoid buffering.
-
-**KnowledgeService** — Loads Markdown documents from the filesystem, parses YAML frontmatter, and performs keyword-based relevance search.
-
-**ProfileService** — Loads developer profiles from Markdown files with YAML frontmatter.
-
-**GlobalExceptionMiddleware** — Catches unhandled exceptions and returns OpenAI-compatible error responses for `/v1/*` endpoints.
-
-### Instruction Precedence (highest to lowest)
+## Instruction Precedence (highest to lowest)
 
 1. **Client's system message** — Preserved and extended, never replaced
 2. **DeveloperMemory profile context** — Appended to system message
 3. **Knowledge context** — Relevant documents appended to system message
 4. **User messages** — Preserved as-is; original conversation history intact
 
-### Prompt Enrichment Detail
-
-When a chat completion request arrives:
-1. Extract the last user message as the search query
-2. Load developer profiles from the `Profiles/` directory
-3. Search knowledge documents for relevance
-4. Build enriched request via `PromptBuilder.BuildEnrichedRequest()`:
-   - If a system message exists: append DeveloperMemory context to it
-   - If no system message: create one with context
-   - All other messages preserved unchanged
-5. Forward enriched request to the downstream provider
-6. Return response (streaming or non-streaming)
+---
 
 ## OpenAI-Compatible API Reference
 
@@ -123,7 +186,7 @@ Chat completion endpoint supporting both streaming and non-streaming.
 ```
 
 **Standard OpenAI parameters forwarded:**
-- `model` — Model selection (resolved: per-request → config → "auto")
+- `model` — Model selection (resolved: per-request -> config -> "auto")
 - `messages` — Full conversation history (preserved)
 - `temperature` — Sampling temperature
 - `top_p` — Nucleus sampling
@@ -147,21 +210,6 @@ Chat completion endpoint supporting both streaming and non-streaming.
 
 List available models from the upstream provider. Falls back to the configured default model if the upstream is unavailable.
 
-**Response:**
-```json
-{
-  "object": "list",
-  "data": [
-    {
-      "id": "auto",
-      "object": "model",
-      "created": 1700000000,
-      "owned_by": "developer-memory"
-    }
-  ]
-}
-```
-
 ### GET /v1/models/{modelId}
 
 Get details for a specific model. Returns 404 with OpenAI-compatible error if not found.
@@ -181,14 +229,7 @@ All errors on `/v1/*` endpoints follow the OpenAI-compatible format:
 }
 ```
 
-**Error types:**
-- `invalid_request_error` — Bad request, missing fields, model not found
-- `authentication_error` — Upstream provider auth failure
-- `permission_error` — Access denied
-- `rate_limit_error` — Rate limit exceeded (429)
-- `timeout_error` — Upstream provider timeout
-- `server_error` — Internal error or upstream failure
-- `upstream_error` — Non-mapped upstream provider error (502)
+---
 
 ## Management API Reference
 
@@ -209,29 +250,9 @@ All errors on `/v1/*` endpoints follow the OpenAI-compatible format:
 | `GET` | `/api/Profiles` | List all loaded profiles |
 | `POST` | `/api/Profiles` | Load a profile from file path |
 
+---
+
 ## Data Models
-
-### OpenAIChatCompletionRequest
-Standard OpenAI request fields (`model`, `messages`, `temperature`, `top_p`, `max_tokens`, `stream`, `frequency_penalty`, `presence_penalty`, `stop`, `n`, `user`, `stream_options`) plus DeveloperMemory extensions (`project`, `tags`, `profile_id`). Unknown fields captured via `JsonExtensionData`.
-
-### Message
-- `role` (string) — Message role
-- `content` (string?) — Message content
-- `tool_calls` (List<ToolCall>?) — Tool calls (for assistant messages)
-- `tool_call_id` (string?) — Tool call ID (for tool messages)
-- `name` (string?) — Name field
-- `ExtensionData` — Captures additional properties (e.g., content arrays) for forwarding
-
-### OpenAIChatCompletionResponse
-Standard OpenAI response: `id`, `object`, `created`, `model`, `choices[]`, `usage`, `system_fingerprint`.
-
-### ChatCompletionChunk
-Streaming response chunk: `id`, `object` ("chat.completion.chunk"), `created`, `model`, `choices[]` (with `delta` instead of `message`), `usage`.
-
-### OpenAIErrorResponse
-```json
-{ "error": { "message": "...", "type": "...", "code": "...", "param": "..." } }
-```
 
 ### KnowledgeDocument
 `Id` (Guid), `Title`, `Content`, `Project`, `Tags` (List<string>), `FilePath`, `LastModified`.
@@ -241,6 +262,19 @@ Streaming response chunk: `id`, `object` ("chat.completion.chunk"), `created`, `
 
 ### SearchResult
 `Id` (Guid), `Title`, `Content`, `Project`, `Tags`, `Score` (double), `FilePath`.
+
+### OpenAIChatCompletionRequest
+Standard OpenAI fields plus DeveloperMemory extensions. Unknown fields captured via `JsonExtensionData`.
+
+### Message
+- `role` (string) — Message role
+- `content` (string?) — Message content
+- `tool_calls` (List<ToolCall>?) — Tool calls (for assistant messages)
+- `tool_call_id` (string?) — Tool call ID (for tool messages)
+- `name` (string?) — Name field
+- `ExtensionData` — Captures additional properties for forwarding
+
+---
 
 ## Configuration
 
@@ -253,6 +287,11 @@ Streaming response chunk: `id`, `object` ("chat.completion.chunk"), `created`, `
       "BaseUrl": "http://localhost:3001/v1",
       "ApiKey": "",
       "DefaultModel": "auto"
+    },
+    "ModelSelection": {
+      "AutoSelectModel": true,
+      "PlanModel": "auto:smart",
+      "BuildModel": "auto:fast"
     },
     "Paths": {
       "KnowledgeFolder": "./Knowledge",
@@ -287,9 +326,12 @@ Use `__` separator:
 | `fusion` | Multiple models answer in parallel, judge synthesizes |
 | Explicit ID | Pin to a specific model (e.g., `gpt-4`, `gemini-3.5-flash`) |
 
+---
+
 ## Build & Run
 
 ```bash
+cd DeveloperMemory.Api
 dotnet restore
 dotnet build
 dotnet run
@@ -299,6 +341,10 @@ dotnet run
 - HTTPS: `https://localhost:7144`
 - Swagger: `/swagger` (Development only)
 - Health: `GET /health`
+
+**Requires:** .NET 10.0 SDK installed on the machine.
+
+---
 
 ## Dependencies
 

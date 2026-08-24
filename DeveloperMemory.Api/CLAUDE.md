@@ -2,48 +2,57 @@
 
 ## Project Overview
 
-DeveloperMemory.Api is an **OpenAI-compatible Developer Memory Gateway** built on .NET 10.0. It sits between AI coding assistants (Cline, Continue, etc.) and OpenAI-compatible LLM providers, enriching requests with persistent developer preferences, coding guidelines, project knowledge, and relevant long-term memory.
+DeveloperMemory.Api is a **persistent context and memory gateway** designed to sit between AI coding assistants (Cline, Continue, etc.) and OpenAI-compatible LLM providers. It enriches requests with persistent developer preferences, coding guidelines, and project knowledge.
 
-**Core capabilities:**
-- Expose OpenAI-compatible `/v1/chat/completions` with full streaming support
+**Current status:** Design and documentation phase. No source code exists yet.
+
+**Core design goals:**
+- Expose an OpenAI-compatible `/v1/chat/completions` endpoint with streaming
 - Enrich requests with developer profiles and knowledge before forwarding
 - Preserve the original conversation history (multi-turn support)
 - Forward to any OpenAI-compatible downstream provider (FreeLLM, OpenAI, etc.)
 - Store and search technical documentation in Markdown with YAML frontmatter
 
-## Architecture
+## Architecture (Design Specification)
 
 ### Request Flow
 
 ```
 IDE AI Client / Cline
-        ↓
+        |
+        v
 DeveloperMemory.Api
-        ↓
+        |
+        v
 Request Validation / Normalization
-        ↓
+        |
+        v
 Load Developer Profile + Search Knowledge
-        ↓
+        |
+        v
 Prompt/Context Enrichment (preserves message history)
-        ↓
+        |
+        v
 OpenAI-Compatible Provider
-        ↓
+        |
+        v
 Streaming (SSE) or Standard Response
-        ↓
+        |
+        v
 IDE AI Client / Cline
 ```
 
 ### Layered Architecture
 
 ```
-Presentation    →  Controllers (OpenAIChatCompletionController, KnowledgeController, ProfilesController)
+Presentation    ->  Controllers (OpenAIChatCompletionController, KnowledgeController, ProfilesController)
                   Middleware  (GlobalExceptionMiddleware)
-Application     →  Services (KnowledgeService, ProfileService, PromptBuilder, FreeLlmApiClient)
-Domain          →  Models (KnowledgeDocument, DeveloperProfile, SearchResult, OpenAI* types)
-Infrastructure  →  Configuration (AppSettings), Logging (Serilog)
+Application     ->  Services (KnowledgeService, ProfileService, PromptBuilder, FreeLlmApiClient)
+Domain          ->  Models (KnowledgeDocument, DeveloperProfile, SearchResult, OpenAI* types)
+Infrastructure  ->  Configuration (AppSettings), Logging (Serilog)
 ```
 
-### Dependency Injection
+### Dependency Injection (Planned)
 
 | Registration | Type | Lifetime |
 |---|---|---|
@@ -51,21 +60,7 @@ Infrastructure  →  Configuration (AppSettings), Logging (Serilog)
 | `KnowledgeService` | Singleton | In-memory document index |
 | `PromptBuilder` | Singleton | Stateless prompt construction |
 | `FreeLlmApiClient` | HttpClient | Transient (via `AddHttpClient<T>`) |
-| `AppSettings` | Options | Bound from `appsettings.json` → `AppSettings` section |
-
-### Key Components
-
-**OpenAIChatCompletionController** — Thin controller handling `/v1/chat/completions`, `/v1/models`, and `/v1/models/{modelId}`. Delegates all business logic to services.
-
-**PromptBuilder** — Enriches OpenAI requests with developer profile and knowledge context. Uses `BuildEnrichedRequest()` which preserves the original conversation history and injects context into the system message. Legacy `BuildPrompt()` method retained for backward compatibility.
-
-**FreeLlmApiClient** — Provider-agnostic HTTP client for OpenAI-compatible APIs. Supports streaming (`SendStreamingCompletionAsync`) and non-streaming (`SendCompletionAsync`). Uses `ResponseHeadersRead` for streaming to avoid buffering.
-
-**KnowledgeService** — Loads Markdown documents from the filesystem, parses YAML frontmatter, and performs keyword-based relevance search.
-
-**ProfileService** — Loads developer profiles from Markdown files with YAML frontmatter.
-
-**GlobalExceptionMiddleware** — Catches unhandled exceptions and returns OpenAI-compatible error responses for `/v1/*` endpoints.
+| `AppSettings` | Options | Bound from `appsettings.json` -> `AppSettings` section |
 
 ### Instruction Precedence (highest to lowest)
 
@@ -87,7 +82,7 @@ When a chat completion request arrives:
 5. Forward enriched request to the downstream provider
 6. Return response (streaming or non-streaming)
 
-## OpenAI-Compatible API Reference
+## OpenAI-Compatible API Reference (Design Specification)
 
 ### POST /v1/chat/completions
 
@@ -114,7 +109,7 @@ Chat completion endpoint supporting both streaming and non-streaming.
 ```
 
 **Standard OpenAI parameters forwarded:**
-- `model` — Model selection (resolved: per-request → config → "auto")
+- `model` — Model selection (resolved: per-request -> config -> "auto")
 - `messages` — Full conversation history (preserved)
 - `temperature` — Sampling temperature
 - `top_p` — Nucleus sampling
@@ -137,21 +132,6 @@ Chat completion endpoint supporting both streaming and non-streaming.
 ### GET /v1/models
 
 List available models from the upstream provider. Falls back to the configured default model if the upstream is unavailable.
-
-**Response:**
-```json
-{
-  "object": "list",
-  "data": [
-    {
-      "id": "auto",
-      "object": "model",
-      "created": 1700000000,
-      "owned_by": "developer-memory"
-    }
-  ]
-}
-```
 
 ### GET /v1/models/{modelId}
 
@@ -181,7 +161,7 @@ All errors on `/v1/*` endpoints follow the OpenAI-compatible format:
 - `server_error` — Internal error or upstream failure
 - `upstream_error` — Non-mapped upstream provider error (502)
 
-## Management API Reference
+## Management API Reference (Design Specification)
 
 ### Knowledge Controller (`/api/Knowledge`)
 
@@ -200,7 +180,7 @@ All errors on `/v1/*` endpoints follow the OpenAI-compatible format:
 | `GET` | `/api/Profiles` | List all loaded profiles |
 | `POST` | `/api/Profiles` | Load a profile from file path |
 
-## Data Models
+## Data Models (Design Specification)
 
 ### OpenAIChatCompletionRequest
 Standard OpenAI request fields (`model`, `messages`, `temperature`, `top_p`, `max_tokens`, `stream`, `frequency_penalty`, `presence_penalty`, `stop`, `n`, `user`, `stream_options`) plus DeveloperMemory extensions (`project`, `tags`, `profile_id`). Unknown fields captured via `JsonExtensionData`.
@@ -233,7 +213,7 @@ Streaming response chunk: `id`, `object` ("chat.completion.chunk"), `created`, `
 ### SearchResult
 `Id` (Guid), `Title`, `Content`, `Project`, `Tags`, `Score` (double), `FilePath`.
 
-## Configuration
+## Configuration (Design Specification)
 
 ### appsettings.json
 
@@ -244,6 +224,11 @@ Streaming response chunk: `id`, `object` ("chat.completion.chunk"), `created`, `
       "BaseUrl": "http://localhost:3001/v1",
       "ApiKey": "",
       "DefaultModel": "auto"
+    },
+    "ModelSelection": {
+      "AutoSelectModel": true,
+      "PlanModel": "auto:smart",
+      "BuildModel": "auto:fast"
     },
     "Paths": {
       "KnowledgeFolder": "./Knowledge",
@@ -278,7 +263,7 @@ Use `__` separator:
 | `fusion` | Multiple models answer in parallel, judge synthesizes |
 | Explicit ID | Pin to a specific model (e.g., `gpt-4`, `gemini-3.5-flash`) |
 
-## Build & Run
+## Build & Run (When Code Exists)
 
 ```bash
 dotnet restore
@@ -291,7 +276,7 @@ dotnet run
 - Swagger: `/swagger` (Development only)
 - Health: `GET /health`
 
-## Dependencies
+## Dependencies (Planned)
 
 | Package | Version | Purpose |
 |---|---|---|
@@ -303,8 +288,9 @@ dotnet run
 
 ## Limitations
 
-- **No authentication** — CORS is open, no auth middleware is enforced
+- **No source code yet** — This is a design-phase repository
+- **No authentication** — CORS is open, no auth middleware planned for v1
 - **Keyword search only** — No semantic/vector search; relevance scoring is text-based
 - **In-memory cache** — Documents loaded on startup; reindex via `POST /api/Knowledge/reindex`
-- **No function/tool calling** — Tool call messages are forwarded but not processed by DeveloperMemory
-- **No embeddings endpoint** — Out of scope for V1
+- **No function/tool calling** — Tool call messages are forwarded but not processed
+- **No embeddings endpoint** — Out of scope for v1

@@ -1,28 +1,110 @@
 # Developer Memory API
 
-## Overview
+## What Is This?
 
-Developer Memory API is an **OpenAI-compatible Developer Memory Gateway** — a .NET 10.0 middleware that sits between AI coding assistants (such as Cline) and OpenAI-compatible LLM providers. It enriches AI requests with persistent developer preferences, coding guidelines, project knowledge, and relevant long-term memory.
+Developer Memory API is a **persistent context and memory gateway** for AI coding assistants. It sits between your IDE's AI client (Cline, Continue, Cursor, etc.) and OpenAI-compatible LLM providers, automatically enriching every request with your developer profile, coding standards, and project knowledge.
+
+**The problem it solves:** AI assistants are stateless. They forget your preferences, ignore your coding standards, and require you to re-explain your project context in every session. Developer Memory gives AI persistent, relevant context so suggestions are consistent and informed.
 
 ## How It Works
 
 ```
-IDE AI Client / Cline
-        ↓
+IDE AI Client (Cline, Continue, etc.)
+        |
+        v
 DeveloperMemory.Api  (OpenAI-compatible gateway)
-        ↓
-Mode Detection (Plan vs Build) → Auto Model Selection
-        ↓
-Developer Profile + Knowledge Retrieval + Prompt Enrichment
-        ↓
-OpenAI-Compatible Provider (FreeLLM, OpenAI, etc.)
-        ↓
-Streaming or Standard Response
-        ↓
-IDE AI Client / Cline
+        |
+        v
+Load Developer Profile + Search Knowledge
+        |
+        v
+Enrich system message with context
+        |
+        v
+Forward to LLM Provider (OpenAI, FreeLLM, etc.)
+        |
+        v
+Response back to IDE AI Client
 ```
 
-## Quick Start
+The gateway is transparent — it speaks the standard OpenAI API protocol, so your AI client works without modification.
+
+## Project Status
+
+**Current state: Design and documentation complete. Implementation not yet started.**
+
+The repository contains:
+- Architecture design and API contract specifications
+- Data format specifications for knowledge documents and developer profiles
+- Example knowledge documents and developer profiles
+- Coding standards and extension guides
+
+See [CURRENT_STATUS.md](CURRENT_STATUS.md) for details.
+
+## Design Documents
+
+| Document | Purpose |
+|---|---|
+| [PROJECT_VISION.md](PROJECT_VISION.md) | Mission, problem statement, target users, core value |
+| [CURRENT_STATUS.md](CURRENT_STATUS.md) | What exists vs what is planned |
+| [ROADMAP.md](ROADMAP.md) | Phased development plan |
+| [KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md) | YAML frontmatter format for documents and profiles |
+| [CHANGELOG.md](CHANGELOG.md) | Design milestone history |
+| [AGENTS.md](AGENTS.md) | AI agent coding guide for implementation |
+
+## Planned Architecture
+
+The intended architecture is a layered .NET 10.0 application:
+
+- **Presentation layer:** OpenAI-compatible controllers and error handling middleware
+- **Application layer:** Prompt builder, knowledge retrieval, profile loading, LLM client
+- **Domain layer:** Data models for knowledge documents, developer profiles, and OpenAI types
+- **Infrastructure layer:** Configuration, logging, file system access
+
+## Core Concepts
+
+### Developer Profiles
+
+Markdown files describing who you are — your skills, experience, role, and preferences. Example:
+
+```markdown
+---
+name: Jane Smith
+role: Senior Backend Developer
+skills: C#, ASP.NET Core, Docker, PostgreSQL
+experience: 8 years
+---
+
+Senior backend developer specializing in the .NET ecosystem...
+```
+
+### Knowledge Documents
+
+Markdown files with YAML frontmatter containing coding standards, project rules, and technical guidance. Example:
+
+```markdown
+---
+title: "Code Generation Rules"
+project: "MyApp"
+tags: coding-standards, quality
+---
+
+# Code Generation Rules
+Generated code should be production-quality...
+```
+
+### Context Enrichment
+
+When a request arrives, the gateway:
+1. Loads your developer profile
+2. Searches knowledge for documents relevant to the current task
+3. Appends profile + knowledge to the system message
+4. Preserves your original conversation history
+5. Forwards the enriched request to the LLM provider
+
+Your explicit instructions always take priority over injected context.
+
+## Quick Start (When Implementation Begins)
 
 ```bash
 cd DeveloperMemory.Api
@@ -30,97 +112,25 @@ dotnet restore
 dotnet run
 ```
 
-- **API**: `http://localhost:5041` / `https://localhost:7144`
-- **Swagger UI**: `/swagger` (Development mode)
-- **Health Check**: `GET /health`
+The API will be available at:
+- **HTTP:** `http://localhost:5041`
+- **Swagger UI:** `/swagger` (Development mode)
+- **Health Check:** `GET /health`
 
-## Cline Integration
-
-Configure Cline (or any OpenAI-compatible client) with:
+## Cline Integration (Planned)
 
 | Setting | Value |
 |---|---|
 | API Base URL | `http://localhost:5041/v1` |
-| Model | Any value (gateway auto-selects based on mode) |
-| API Key | Any value (not validated) |
+| Model | Any value (gateway handles selection) |
+| API Key | Any value (not validated in local mode) |
 
-The gateway automatically detects whether Cline is in **plan mode** (reasoning/analysis) or **build mode** (code implementation) and routes to the best model for each task.
+## Limitations
 
-## Auto Model Selection
-
-When `AutoSelectModel` is enabled, the gateway ignores the client's requested model and selects the optimal model based on detected mode:
-
-| Mode | Detection | Default Model | Purpose |
-|---|---|---|---|
-| **Plan** | System prompt contains planning indicators (`# TASK`, `Checklist`, `Goal:`) | `auto:smart` | Complex reasoning, architecture planning |
-| **Build** | System prompt contains tool definitions (`execute_command`, `write_to_file`) | `auto:fast` | Code implementation, tool execution |
-| **Unknown** | No recognizable indicators | Falls back to configured `DefaultModel` | General queries |
-
-Configure in `appsettings.json`:
-```json
-{
-  "AppSettings": {
-    "ModelSelection": {
-      "AutoSelectModel": true,
-      "PlanModel": "auto:smart",
-      "BuildModel": "auto:fast"
-    }
-  }
-}
-```
-
-Set `AutoSelectModel: false` to let the client control model selection.
-
-## Token Tracking
-
-Every request is logged with token metrics at three stages for comparison:
-
-```
-TokenSummary: incoming=~1234 | enriched=~1567 | response=~456 | provider=456 | enrichment_overhead=~333 tokens
-```
-
-| Metric | Description |
-|---|---|
-| `incoming_tokens` | Estimated tokens in Cline's original request |
-| `enriched_tokens` | Estimated tokens after DeveloperMemory adds profile + knowledge context |
-| `response_tokens` | Estimated tokens in the LLM response |
-| `provider_tokens` | Actual token count reported by the provider (if available) |
-| `enrichment_overhead` | `enriched - incoming` — the cost of added context |
-
-Logs are written to:
-- **Console**: Via Serilog (look for `TokenSummary:` lines)
-- **File**: `logs/requests/requests-YYYY-MM-DD.log` (daily files)
-
-## OpenAI-Compatible Endpoints
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/v1/chat/completions` | POST | Chat completions (streaming + non-streaming) |
-| `/v1/models` | GET | List available models |
-| `/v1/models/{modelId}` | GET | Get specific model details |
-
-## Management Endpoints
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/Knowledge` | GET | Search knowledge base |
-| `/api/Knowledge/documents` | GET | List all documents |
-| `/api/Knowledge/{id}` | GET | Get document by ID |
-| `/api/Knowledge` | POST | Create a new document |
-| `/api/Knowledge/reindex` | POST | Reindex all documents |
-| `/api/Profiles` | GET | List developer profiles |
-| `/api/Profiles` | POST | Load profile from file |
-| `/health` | GET | Health check |
-
-## Streaming Support
-
-DeveloperMemory fully supports OpenAI-compatible streaming via Server-Sent Events (SSE). When a client requests `stream: true`, the response from the downstream provider is forwarded directly to the client without buffering.
-
-## Documentation
-
-- **[CLAUDE.md](CLAUDE.md)** — Complete project reference: architecture, API docs, data models, configuration
-- **[AGENTS.md](AGENTS.md)** — AI agent coding guide: standards, extension patterns, gotchas
-- **[KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md)** — YAML frontmatter format for documents and profiles
+- No source code yet — this is a design-phase repository
+- Keyword-based retrieval planned for v1 (semantic search is v2+)
+- Local tool only — no authentication or multi-user support planned initially
+- No persistent storage in v1 (in-memory, requires reindex after changes)
 
 ## License
 

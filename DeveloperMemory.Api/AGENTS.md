@@ -1,6 +1,12 @@
 # AGENTS.md — AI Agent Coding Guide
 
-## Project Structure
+## Current State
+
+**This repository is in the design and documentation phase.** There is no source code yet. This guide describes the intended architecture and coding standards for when implementation begins.
+
+When you are asked to implement code in this project, treat the design documents as specifications, not descriptions of existing code.
+
+## Project Structure (Planned)
 
 ```
 DeveloperMemory.Api/
@@ -36,23 +42,7 @@ DeveloperMemory.Api/
 └── appsettings.Development.json
 ```
 
-## Key Features
-
-### Auto Model Selection
-- `ModeDetector` analyzes Cline's system prompt to detect plan vs build mode
-- `ModelSelectionSettings` configures which model to use for each mode
-- When `AutoSelectModel: true`, the client's model choice is overridden
-
-### Token Tracking
-- `TokenEstimator` provides ~4 chars/token estimation for logging
-- `RequestLogger` logs three stages: INCOMING → ENRICHED → RESPONSE
-- Daily log files at `logs/requests/requests-YYYY-MM-DD.log`
-- Console output via Serilog (look for `TokenSummary:` lines)
-
-### Cline Compatibility
-- `MessageContentConverter` handles both string and array `content` fields
-- `InvalidModelStateResponseFactory` returns OpenAI-compatible errors for bad requests
-- `RequestLoggingMiddleware` captures raw request bodies for debugging
+This structure is a design specification. File names and organization may change during implementation.
 
 ## Coding Standards
 
@@ -82,7 +72,7 @@ DeveloperMemory.Api/
 - Stateless services are safe to register as singletons
 - External HTTP via typed `HttpClient` (FreeLlmApiClient)
 
-## How to Extend
+## How to Extend (When Code Exists)
 
 ### Adding a New Mode
 1. Add enum value to `ModeDetector.TaskMode`
@@ -92,7 +82,7 @@ DeveloperMemory.Api/
 
 ### Adding a New Knowledge Source
 1. Create `.md` file in `Knowledge/` with YAML frontmatter
-2. Use `title`, `project`, `tags` fields
+2. Use `name` and `scope` fields
 3. Call `POST /api/Knowledge/reindex` to reload
 
 ## Key Gotchas
@@ -109,7 +99,7 @@ DeveloperMemory.Api/
 
 6. **Multimodal content**: Array content is stored as JSON string in `Message.Content`. It's forwarded correctly but DeveloperMemory doesn't parse individual content parts.
 
-## Testing Checklist
+## Testing Checklist (When Code Exists)
 
 - [ ] `dotnet build` succeeds with 0 errors
 - [ ] `GET /health` returns healthy

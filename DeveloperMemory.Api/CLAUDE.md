@@ -4,11 +4,21 @@
 
 DeveloperMemory.Api is a **persistent, intelligent memory layer for AI applications and agents**. It enables AI systems to remember relevant information about a user, their preferences, goals, projects, decisions, and previous interactions across conversations.
 
-**Current status:** Working .NET 10.0 implementation of the core LLM proxy infrastructure with knowledge injection. The full memory intelligence pipeline is not yet implemented.
+**Core purpose:** Prevent developers and AI coding assistants from repeatedly needing to rediscover or manually provide important context.
 
-**Core vision:** Act as a Memory Intelligence Gateway between users, AI applications, agents, and LLM providers. Capture valuable information, classify it, manage its lifecycle, retrieve relevant memories, and construct context for AI requests.
+**Core capabilities:**
+- Expose OpenAI-compatible `/v1/chat/completions` with full streaming support
+- Enrich requests with developer profiles and knowledge before forwarding
+- Preserve the original conversation history (multi-turn support)
+- Forward to any OpenAI-compatible downstream provider (FreeLLM, OpenAI, etc.)
+- Store and search technical documentation in Markdown with YAML frontmatter
 
----
+**Related documents:**
+- [PROJECT_VISION.md](PROJECT_VISION.md) — Mission, problem statement, core concepts
+- [CURRENT_STATUS.md](CURRENT_STATUS.md) — Implementation inventory and status
+- [ROADMAP.md](ROADMAP.md) — Development roadmap
+- [AGENTS.md](AGENTS.md) — AI agent coding guide
+- [KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md) — Frontmatter format reference
 
 ## Architecture
 
@@ -346,16 +356,25 @@ dotnet run
 | `Microsoft.AspNetCore.OpenApi` | 10.0.10 | OpenAPI spec generation |
 | `Swashbuckle.AspNetCore` | 10.0.1 | Swagger UI |
 
----
+## Memory Model
+
+DeveloperMemory distinguishes four conceptual layers:
+
+| Concept | Description | V1 Status |
+|---|---|---|
+| **Developer Profile** | Persistent info about the developer: preferences, conventions, skills, role | ✅ File-based Markdown with YAML frontmatter |
+| **Knowledge Document** | Reusable info about projects or technologies: standards, rules, documentation | ✅ File-based Markdown with YAML frontmatter |
+| **Project Context** | Scoping information that associates knowledge with specific projects | ✅ `project` field in frontmatter and request |
+| **Decision / Historical Memory** | Important decisions, outcomes, historical context | ❌ Out of scope for V1 |
+
+The LLM proxy capability is an **integration feature**, not the conceptual center. The core value is the memory and context assembly, not the provider forwarding.
 
 ## Limitations
 
-- **No memory capture pipeline** — Currently requires manual knowledge creation
-- **No memory classification** — All knowledge treated as generic documents
-- **No memory lifecycle** — No automatic update, superseding, or expiration
-- **No semantic search** — Keyword matching only
-- **No persistent storage** — In-memory only, lost on restart
-- **No authentication** — CORS is open, local tool only
-- **No function/tool calling** — Tool call messages forwarded but not processed
-- **Approximate token counts** — ~4 chars/token heuristic
-- **Frontmatter parser truncation** — Values containing `:` after first colon are truncated
+- **No authentication** — CORS is open, no auth middleware is enforced
+- **Keyword search only** — No semantic/vector search; relevance scoring is text-based
+- **In-memory cache** — Documents loaded on startup; reindex via `POST /api/Knowledge/reindex`
+- **ID instability** — Document/profile IDs regenerate on each load; use `FilePath` for stable identification
+- **No function/tool calling** — Tool call messages are forwarded but not processed by DeveloperMemory
+- **No embeddings endpoint** — Out of scope for V1
+- **Frontmatter parser limitations** — Simple `:` split; values containing `:` will be truncated

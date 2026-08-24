@@ -109,6 +109,7 @@ public class KnowledgeService
                     switch (key)
                     {
                         case "title":
+                        case "name":
                             document.Title = value;
                             break;
                         case "project":
@@ -156,7 +157,8 @@ public class KnowledgeService
     public async Task<KnowledgeDocument> CreateDocumentAsync(string title, string content, string? project = null, List<string>? tags = null)
     {
         // Create the frontmatter
-        var frontmatter = $"---\ntitle: \"{title}\"\n";
+        var escapedTitle = title.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        var frontmatter = $"---\ntitle: \"{escapedTitle}\"\n";
         if (!string.IsNullOrEmpty(project))
         {
             frontmatter += $"project: \"{project}\"\n";

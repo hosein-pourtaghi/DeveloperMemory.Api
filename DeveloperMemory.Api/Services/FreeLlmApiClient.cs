@@ -240,28 +240,6 @@ public class FreeLlmApiClient
         }
     }
 
-    // ── Legacy Support ─────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Legacy method for the /api/Proxy endpoint. Sends a simple prompt and returns the text response.
-    /// </summary>
-    public async Task<string> SendPromptAsync(string prompt, string? requestModel = null, CancellationToken cancellationToken = default)
-    {
-        var model = ResolveModel(requestModel);
-
-        var request = new OpenAIChatCompletionRequest
-        {
-            Model = model,
-            Messages = [new Message { Role = "user", Content = prompt }],
-            Temperature = 0.7,
-            MaxTokens = 2048,
-            Stream = false
-        };
-
-        var response = await SendCompletionAsync(request, cancellationToken);
-        return response.Choices?.FirstOrDefault()?.Message?.Content ?? string.Empty;
-    }
-
     private void EnsureConfigured()
     {
         if (!IsConfigured)

@@ -11,17 +11,17 @@ DeveloperMemory.Api/
 ├── Services/
 │   ├── KnowledgeService.cs          # Document parsing, search, indexing
 │   ├── ProfileService.cs            # Profile parsing and loading
-│   ├── PromptBuilder.cs             # Enriches OpenAI requests (preserves conversation)
+│   ├── PromptBuilder.cs             # Assembles context and enriches requests
 │   ├── FreeLlmApiClient.cs          # HTTP client for downstream providers
 │   ├── TokenEstimator.cs            # Token counting utility (~4 chars/token heuristic)
 │   ├── RequestLogger.cs             # Logs token metrics to file and console
-│   └── ModeDetector.cs              # Detects plan vs build mode from Cline's prompt
+│   ├── ModeDetector.cs              # Detects plan vs build mode from system prompt
+│   └── StableIdHelper.cs            # Deterministic GUID generation from file paths
 ├── Models/
 │   ├── OpenAIRequestResponse.cs     # All OpenAI-compatible types
 │   ├── MessageContentConverter.cs   # Handles string or array content fields
 │   ├── KnowledgeDocument.cs
 │   ├── DeveloperProfile.cs
-│   ├── PromptRequest.cs
 │   └── SearchResult.cs
 ├── Infrastructure/
 │   ├── Configuration/
@@ -97,7 +97,7 @@ DeveloperMemory.Api/
 
 ## Key Gotchas
 
-1. **IDs are ephemeral**: Document/profile IDs change on every reload. Use `FilePath` for stable identification.
+1. **IDs are stable**: Document/profile IDs are deterministic, derived from file paths via `StableIdHelper`. Same file always produces the same ID.
 
 2. **Token estimates are approximate**: ~4 chars/token heuristic. For billing-accurate counts, check `provider_tokens` in the response.
 

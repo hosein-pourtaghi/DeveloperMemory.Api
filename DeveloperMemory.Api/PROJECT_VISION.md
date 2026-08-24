@@ -1,94 +1,131 @@
-# PROJECT_VISION.md — DeveloperMemory API
+# Project Vision — DeveloperMemory.Api
 
 ## Mission
 
-DeveloperMemory.Api is a persistent context and memory gateway that helps AI development tools retrieve relevant developer and project knowledge and build better AI requests. Its primary purpose is to prevent developers and AI coding assistants from repeatedly needing to rediscover or manually provide important context.
+DeveloperMemory.Api automatically injects relevant developer preferences and project knowledge into every AI coding assistant interaction, so developers never have to manually paste the same context again.
 
 ## Problem Statement
 
-When developers use AI coding assistants (Cline, Continue, Copilot, etc.), every conversation starts from zero. The AI has no memory of:
+When developers use AI coding assistants — Cline, Continue, Cursor, Copilot, or any OpenAI-compatible client — every conversation starts from zero. The AI has no awareness of:
 
-- The developer's coding preferences and conventions
+- The developer's coding conventions, preferences, or technology stack
 - Project-specific rules, architecture decisions, or coding standards
 - Technical documentation that should influence how code is written
-- Previous decisions about tooling, patterns, or approaches
 
-This forces developers to repeatedly paste the same context, re-explain conventions, and manually inject project knowledge into every AI interaction. The result is wasted time, inconsistent AI outputs, and fragmented knowledge that never accumulates.
+This forces developers to repeatedly paste identical context into every AI interaction. The result is wasted time, inconsistent AI outputs, and knowledge that never accumulates.
+
+## Solution
+
+DeveloperMemory.Api sits between AI coding assistants and LLM providers. It intercepts every chat completion request, assembles relevant context from developer-authored Markdown files, and appends that context to the request before forwarding it to the LLM provider. The developer configures their profile and project knowledge once; the system applies it to every interaction automatically.
+
+```
+AI Coding Assistant (Cline, Continue, etc.)
+        │
+        ▼
+DeveloperMemory.Api
+        │
+        ├── Load Developer Profiles     (who is the developer?)
+        ├── Search Knowledge Documents  (what rules apply?)
+        ├── Assemble Context            (what should the AI know?)
+        │
+        ▼
+Enriched Request → LLM Provider → Response → AI Coding Assistant
+```
 
 ## Target Users
 
-- **Developers** using AI coding assistants (Cline, Continue, Cursor, Copilot, or any OpenAI-compatible client)
-- **Teams** that want consistent AI behavior aligned with project standards and shared knowledge
-- **Organizations** building internal AI development tooling
+- **Individual developers** using AI coding assistants who want consistent, context-aware AI behavior
+- **Teams** that want shared project standards and knowledge applied uniformly across all AI interactions
+- **Organizations** building internal AI development tooling with institutional knowledge
 
 ## Core Value Proposition
 
-DeveloperMemory.Api sits between AI clients and LLM providers as an intelligent proxy that automatically enriches every request with relevant context. The developer configures their profile and project knowledge once; the gateway applies it to every interaction automatically.
+**Configure once, apply everywhere.** Instead of pasting the same coding standards, project rules, and preferences into every AI conversation, developers write them as Markdown files. DeveloperMemory.Api reads these files and automatically includes the relevant context in every request — with zero manual effort after initial setup.
+
+The value is not the LLM proxy. The value is the automatic context assembly and injection. The proxy simply enables the mechanism.
 
 ## Core Concepts
 
-### What "Memory" Means
+This project uses four distinct terms. They have specific, non-overlapping meanings.
 
-In this project, "memory" refers to persistent, developer-authored knowledge that influences how an AI assistant behaves. It is not autonomous learning, not embeddings, not vector databases. It is structured, human-readable Markdown files that the developer explicitly creates and curates.
+### Developer Identity
 
-### Memory Layers
+What the system knows about the developer — their role, skills, experience level, and coding preferences. Stored as Markdown files with YAML frontmatter in the `Profiles/` directory.
 
-1. **Developer Profile** — Persistent information about the developer: preferences, coding conventions, technology stack, role, experience level.
+Developer Identity answers: *"Who is asking the AI for help?"*
 
-2. **Knowledge Documents** — Reusable information about projects, technologies, or domains: coding standards, architecture rules, technical documentation, project-specific instructions.
+### Project Knowledge
 
-3. **Project Context** — Scoping information that associates knowledge with specific projects or domains.
+Reusable information about projects, technologies, or domains — coding standards, architecture rules, technical documentation, project-specific instructions. Stored as Markdown files with YAML frontmatter in the `Knowledge/` directory.
 
-4. **Decision / Historical Memory** — *(Future capability)* Storing important decisions, outcomes, and historical context. Not implemented in V1.
+Project Knowledge answers: *"What rules and context apply to this project?"*
 
-### How Memory Is Applied
+### Context Assembly
 
-```
-AI Client Request
-        ↓
-DeveloperMemory Gateway
-        ↓
-Load Developer Profile(s)
-        ↓
-Search Knowledge Documents (keyword-based)
-        ↓
-Assemble Context Block
-        ↓
-Enrich System Message (append context, preserve history)
-        ↓
-Forward to LLM Provider
-        ↓
-Return Response
-```
+The process of retrieving relevant Developer Identity and Project Knowledge, and building a context block that gets appended to the AI's system message. Currently keyword-based; future versions may add semantic retrieval.
 
-### Instruction Precedence
+Context Assembly answers: *"Which knowledge is relevant to this specific request?"*
 
-1. Client's existing system message (preserved and extended, never replaced)
-2. DeveloperMemory profile context (appended to system message)
-3. Retrieved knowledge context (appended to system message)
-4. User messages (preserved as-is)
+### Provider Integration
 
-## What the Project Is Not
+The OpenAI-compatible forwarding mechanism that sends the enriched request to an LLM provider and returns the response. This enables DeveloperMemory.Api to sit transparently between any AI client and any OpenAI-compatible provider.
 
-- **Not an AI learning system** — It does not learn from interactions or autonomously extract memories.
-- **Not a vector database** — V1 uses keyword matching, not embeddings or semantic search.
-- **Not a multi-user SaaS** — V1 is a single-developer gateway, not a multi-tenant platform.
-- **Not an IDE plugin** — It is a standalone API that any OpenAI-compatible client can use.
-- **Not a replacement for LLM providers** — It is a middleware layer, not a model host.
+Provider Integration answers: *"How does the enriched request reach the LLM?"*
+
+### What "Memory" Means in This Project
+
+The project name uses "Memory" loosely. In V1, there is no autonomous learning, no embeddings, no vector search, and no cross-session recall. The "memory" is **developer-authored, static Markdown files** that the developer explicitly creates and curates.
+
+The developer writes knowledge. The system retrieves and injects it. That is the complete memory model for V1.
+
+## Non-Goals
+
+The following are deliberately excluded from the product scope:
+
+- **Not an AI learning system** — It does not learn from interactions or extract knowledge autonomously
+- **Not a vector database** — V1 uses keyword matching, not embeddings or semantic search
+- **Not a multi-user SaaS** — V1 is a single-developer gateway, not a multi-tenant platform
+- **Not an IDE plugin** — It is a standalone API; IDE integration is handled by the AI client
+- **Not a replacement for LLM providers** — It is middleware, not a model host
+- **Not a project management system** — It does not track tasks, issues, or project state
+- **Not an autonomous coding agent** — It enriches requests; it does not execute code
+
+## Product Capabilities
+
+| Capability | Description | V1 Status |
+|---|---|---|
+| Developer identity management | Load developer profiles from Markdown | ✅ Implemented |
+| Project knowledge management | Load, search, and create knowledge documents | ✅ Implemented |
+| Keyword-based retrieval | Find relevant knowledge using text matching | ✅ Implemented |
+| Context assembly | Build context blocks from profiles + knowledge | ✅ Implemented |
+| Request enrichment | Append context to system messages, preserve conversation history | ✅ Implemented |
+| OpenAI-compatible proxy | Forward enriched requests to any OpenAI-compatible provider | ✅ Implemented |
+| Streaming support | Forward SSE streaming responses without buffering | ✅ Implemented |
+| Mode detection | Detect plan vs build mode for model selection | ✅ Implemented |
+| Token tracking | Log token metrics at each pipeline stage | ✅ Implemented |
+| Semantic retrieval | Embedding-based similarity search | ❌ Planned for V2 |
+| Cross-session learning | Remember decisions and outcomes from conversations | ❌ Planned for V2 |
+| Multi-user support | Team-shared knowledge with access control | ❌ Planned for V2 |
+
+## Design Principle
+
+**Simple implementation now, replaceable infrastructure later.** V1 is deliberately minimal. File-based Markdown storage, keyword search, and a thin proxy layer. Every component is designed so it can be replaced with a more sophisticated implementation without changing the overall architecture.
 
 ## Long-Term Direction
 
 ### V1 (Current)
-File-based profiles and knowledge, keyword retrieval, context assembly, prompt enrichment, OpenAI-compatible provider forwarding.
+
+File-based developer identity and project knowledge, keyword retrieval, context assembly, request enrichment, OpenAI-compatible provider forwarding.
 
 ### V2 (Future)
+
 - Persistent database for knowledge and profiles
 - Embeddings and vector search for semantic retrieval
 - Automatic memory extraction from conversations
-- Multi-user and team support
 - Enhanced context intelligence (relevance weighting, context budgets)
+
+### V3 (Future)
+
+- Multi-user and team support with access control
 - Decision and historical memory
-
-### Design Principle
-
-**Simple implementation now, replaceable infrastructure later.** V1 is deliberately minimal. Every component is designed so it can be replaced with a more sophisticated implementation without changing the overall architecture.
+- Cross-session learning and preference refinement

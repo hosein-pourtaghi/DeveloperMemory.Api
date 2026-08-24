@@ -1,5 +1,41 @@
 # Changelog
 
+## [2.5.0] - 2026-08-24
+
+### V1 Verification & Hardening
+- **Fixed frontmatter parser colon bug**: Changed from `line.Split(':')` (which truncated values containing `:`) to `line.IndexOf(':')` to preserve the full value after the first colon. Applied to both `KnowledgeService` and `ProfileService`.
+- **Fixed profile path security**: Added path containment validation to `POST /api/Profiles` to prevent reading files outside the configured profiles directory.
+- **Removed dead code**: Deleted unused `MaxKnowledgeContextLength` constant from `PromptBuilder`, removed legacy `SendPromptAsync` method from `FreeLlmApiClient` (no callers after ProxyController removal).
+- **Renamed `PromptRequest.cs`** to `CreateDocumentRequest.cs` to match its actual content.
+- **Fixed KNOWLEDGE_FORMAT.md**: Updated document example to use `name:` (matching actual knowledge files) instead of `title:`. Clarified that `name` and `title` are aliases.
+- **Updated CURRENT_STATUS.md**: Removed stale colon parser limitation, fixed duplicate `scope` entry.
+- **Updated CLAUDE.md**: Removed stale colon parser limitation from limitations list.
+
+## [2.4.0] - 2026-08-24
+
+### Vision & Documentation Correction
+- **Rewrote PROJECT_VISION.md** as single source of truth. Fixed terminology drift: replaced ambiguous "memory"/"knowledge"/"context" usage with clear, non-overlapping definitions (Developer Identity, Project Knowledge, Context Assembly, Provider Integration). Explicitly defined what the product is and is not.
+- **Rewrote README.md** to lead with the product story (problem → solution → how it works) instead of implementation details.
+- **Rewrote CURRENT_STATUS.md** with clear Implemented/Partial/Planned categories based on source code evidence.
+- **Rebuilt ROADMAP.md** around product evolution milestones (Foundation → Production-Ready → Semantic Retrieval → Intelligent Context → Team & Enterprise) instead of technical task lists.
+- **Rewrote CLAUDE.md** as a clean architecture reference, separated from product vision. Fixed Memory Model table. Corrected AGENTS.md stale "IDs are ephemeral" gotcha.
+- **Fixed terminology inconsistency** across all documentation files.
+
+## [2.3.0] - 2026-08-24
+
+### V1 Verification, Testing & Hardening
+
+- **Fixed ID stability**: Document and profile IDs are now deterministic, derived from file paths via SHA-256 hash (`StableIdHelper`). Same file always produces same ID across restarts and reindexes.
+- **Removed dead code**: Deleted `PromptRequest` class and legacy `BuildPrompt()` method from `PromptBuilder` (zero consumers after ProxyController removal).
+- **Added test project**: Created `DeveloperMemory.Api.Tests` with xUnit + Moq. 50+ unit tests covering:
+  - `ModeDetector`: 11 tests for plan/build/unknown detection
+  - `TokenEstimator`: token counting accuracy for empty, single, and multi-message requests
+  - `PromptBuilder`: context assembly, message preservation, edge cases (no system message, knowledge limiting)
+  - `KnowledgeService`: frontmatter parsing, search, document creation, ID stability, reindex
+  - `ProfileService`: frontmatter parsing, profile loading, ID stability
+  - `StableIdHelper`: deterministic GUID generation, path normalization
+- **Defined scope metadata**: `scope` frontmatter field documented as reserved/planned for V1.
+
 ## [2.2.0] - 2026-08-24
 
 ### Repository Audit & Documentation Alignment

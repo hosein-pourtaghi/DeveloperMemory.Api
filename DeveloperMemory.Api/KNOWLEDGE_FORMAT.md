@@ -8,7 +8,7 @@ Both knowledge documents and developer profiles use Markdown files with YAML fro
 
 ```markdown
 ---
-title: "How to Configure Serilog"
+name: "How to Configure Serilog"
 project: "MyApp"
 tags: logging, dotnet, configuration
 ---
@@ -28,12 +28,13 @@ Add to `Program.cs`...
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `title` | string | No | Document title. Falls back to filename if omitted. |
+| `name` | string | No | Document title. Falls back to filename if omitted. Also accepts `title` as an alias. |
 | `project` | string | No | Project name for filtering. Empty string if omitted. |
 | `tags` | string | No | Comma-separated tags (e.g., `logging, dotnet`). Empty list if omitted. |
 
 ### Important Notes
 
+- The `name` and `title` fields are aliases — either works. The actual knowledge files in this repository use `name:`.
 - Tags are a **single comma-separated string**, not a YAML array: `tags: logging, dotnet` ✅ — `tags: [logging, dotnet]` ❌
 - The frontmatter parser splits on `:` and uses the **first two segments only**. Values containing `:` will be truncated.
 - Files without valid frontmatter are still loaded — `title` defaults to the filename, `project` and `tags` are empty.

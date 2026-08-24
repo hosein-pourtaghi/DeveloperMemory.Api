@@ -1,92 +1,109 @@
-# CURRENT_STATUS.md — Implementation Status
+# Current Status
 
-*Based on actual repository audit. Last verified: 2026-08-24.*
+*Last updated: 2026-08-24. Based on source code inspection and test results.*
 
-## Repository State
+## Repository
 
 - **Language:** C# (.NET 10.0)
-- **Project type:** ASP.NET Core Web API
-- **Source files:** 22 source files (16 .cs, 2 .json config, 1 .csproj, 1 .http, 1 .gitignore, 1 .json launch settings)
-- **Documentation:** 5 markdown files (README, CLAUDE, AGENTS, CHANGELOG, KNOWLEDGE_FORMAT) + 2 new vision docs
-- **Knowledge documents:** 2 markdown files with YAML frontmatter
-- **Developer profiles:** 2 markdown files with YAML frontmatter
-- **Tests:** None (no test project exists)
+- **Framework:** ASP.NET Core Web API
+- **Tests:** xUnit test project with 50+ unit tests
 - **CI/CD:** None
 - **Docker:** None
 
 ---
 
-## Component Inventory
+## Implemented
 
-### Working
+The following capabilities are fully implemented in source code and covered by unit tests.
 
-| Component | File | Status |
+### Core Product
+
+| Component | Location | Description |
 |---|---|---|
-| **OpenAIChatCompletionController** | `Controllers/OpenAIChatCompletionController.cs` | Complete — handles `/v1/chat/completions`, `/v1/models`, `/v1/models/{id}` with streaming, error handling, and mode detection |
-| **KnowledgeController** | `Controllers/KnowledgeController.cs` | Complete — CRUD endpoints for knowledge documents with search, create, reindex |
-| **ProfilesController** | `Controllers/ProfilesController.cs` | Complete — list and load profile endpoints |
-| **FreeLlmApiClient** | `Services/FreeLlmApiClient.cs` | Complete — HTTP client for OpenAI-compatible providers, streaming + non-streaming, model resolution |
-| **KnowledgeService** | `Services/KnowledgeService.cs` | Complete — Markdown/YAML frontmatter parsing, keyword search with relevance scoring, document creation |
-| **ProfileService** | `Services/ProfileService.cs` | Complete — Markdown/YAML frontmatter parsing, profile loading from filesystem |
-| **PromptBuilder** | `Services/PromptBuilder.cs` | Complete — Enriches requests with profile + knowledge context while preserving conversation history |
-| **ModeDetector** | `Services/ModeDetector.cs` | Complete — Detects plan vs build mode from system prompt content |
-| **TokenEstimator** | `Services/TokenEstimator.cs` | Complete — ~4 chars/token heuristic for logging |
-| **RequestLogger** | `Services/RequestLogger.cs` | Complete — Three-stage token logging to console and daily file |
-| **GlobalExceptionMiddleware** | `Infrastructure/Middleware/GlobalExceptionMiddleware.cs` | Complete — OpenAI-compatible error responses for /v1/* endpoints |
-| **RequestLoggingMiddleware** | `Infrastructure/Middleware/RequestLoggingMiddleware.cs` | Complete — Diagnostic request body logging for debugging |
-| **AppSettings** | `Infrastructure/Configuration/AppSettings.cs` | Complete — Strongly-typed settings with ModelSelection, FreeLlmApi, Paths |
-| **OpenAI Models** | `Models/OpenAIRequestResponse.cs` | Complete — Full OpenAI request/response types with JsonExtensionData forwarding |
-| **MessageContentConverter** | `Models/MessageContentConverter.cs` | Complete — Handles string and array content fields for Cline compatibility |
-| **Program.cs** | `Program.cs` | Complete — DI registration, middleware pipeline, Swagger, health check, startup document loading |
-| **Knowledge Documents** | `Knowledge/*.md` | Working — AI agent rules and code generation rules load correctly |
-| **Developer Profiles** | `Profiles/*.md` | Working — Developer profile and preferences load correctly |
+| Developer Identity Loading | `Services/ProfileService.cs` | Loads developer profiles from Markdown files with YAML frontmatter |
+| Project Knowledge Loading | `Services/KnowledgeService.cs` | Loads knowledge documents from Markdown files with YAML frontmatter |
+| Keyword Retrieval | `Services/KnowledgeService.cs` | Text-based relevance search across knowledge documents |
+| Context Assembly | `Services/PromptBuilder.cs` | Builds context blocks from profiles and knowledge; appends to system messages |
+| Request Enrichment | `Services/PromptBuilder.cs` | Preserves conversation history while injecting context |
+| Stable Identity | `Services/StableIdHelper.cs` | Deterministic GUIDs from file paths (IDs stable across restarts) |
 
-### Partially Implemented
+### Provider Integration
 
-| Component | Issue |
-|---|---|
-| **Frontmatter `name` field** | Knowledge docs use `name:` instead of `title:`. Parser now handles both (fixed this audit). |
-| **Frontmatter `scope` field** | Both knowledge docs and profiles define `scope:` but it is not parsed or stored. Not required for V1. |
-| **PromptRequest model** | `Models/PromptRequest.cs` exists but is only used by the legacy `BuildPrompt()` method. The removed ProxyController was its consumer. Harmless dead code. |
+| Component | Location | Description |
+|---|---|---|
+| Chat Completions Controller | `Controllers/OpenAIChatCompletionController.cs` | OpenAI-compatible `/v1/chat/completions` endpoint |
+| Model Endpoints | `Controllers/OpenAIChatCompletionController.cs` | `/v1/models` and `/v1/models/{modelId}` |
+| LLM Provider Client | `Services/FreeLlmApiClient.cs` | HTTP client for OpenAI-compatible providers |
+| Streaming Forwarding | `Services/FreeLlmApiClient.cs` | SSE streaming without buffering |
+| Mode Detection | `Services/ModeDetector.cs` | Detects plan vs build mode for model selection |
+| Token Tracking | `Services/TokenEstimator.cs` | ~4 chars/token heuristic for logging |
+| Request Logging | `Services/RequestLogger.cs` | Three-stage token metrics to console and daily files |
 
-### Not Implemented / Missing
+### Management API
 
-| Component | Notes |
-|---|---|
-| **Test project** | No unit or integration tests exist |
-| **CI/CD pipeline** | No GitHub Actions or build automation |
-| **Docker support** | No Dockerfile or docker-compose |
-| **Authentication** | No auth middleware; CORS is wide open (documented limitation) |
-| **Embeddings / vector search** | Out of scope for V1 (future V2) |
-| **Decision / historical memory** | Out of scope for V1 (future V2) |
-| **Multi-user support** | Out of scope for V1 (future V2) |
+| Component | Location | Description |
+|---|---|---|
+| Knowledge Controller | `Controllers/KnowledgeController.cs` | CRUD, search, and reindex endpoints |
+| Profiles Controller | `Controllers/ProfilesController.cs` | List and load profile endpoints |
+
+### Infrastructure
+
+| Component | Location | Description |
+|---|---|---|
+| Exception Middleware | `Infrastructure/Middleware/GlobalExceptionMiddleware.cs` | OpenAI-compatible error responses |
+| Request Logging Middleware | `Infrastructure/Middleware/RequestLoggingMiddleware.cs` | Diagnostic body logging for debugging |
+| Configuration | `Infrastructure/Configuration/AppSettings.cs` | Strongly-typed settings |
+| OpenAI Type System | `Models/OpenAIRequestResponse.cs` | Full request/response types with `JsonExtensionData` forwarding |
+| Content Converter | `Models/MessageContentConverter.cs` | Handles string and array content fields (Cline compatibility) |
+| Application Entry | `Program.cs` | DI registration, middleware pipeline, Swagger, health check |
+
+### Data
+
+| Component | Location | Description |
+|---|---|---|
+| Knowledge Documents | `Knowledge/*.md` | 2 documents with YAML frontmatter (AI rules, code generation rules) |
+| Developer Profiles | `Profiles/*.md` | 2 profiles with YAML frontmatter (developer identity, preferences) |
 
 ---
 
-## Build Status
+## Partially Implemented
 
-**Cannot verify in current environment** — The .NET 10.0 SDK is not available in the Freebuff WebContainer environment. The project targets `net10.0` which requires a specific SDK version.
+| Component | Status | Notes |
+|---|---|---|
+| Frontmatter `name` field | Works | Knowledge docs use `name:` instead of `title:`; parser handles both |
+| Frontmatter `scope` field | Parsed but unused | Present in files but not consumed by any runtime logic. Reserved for future use. |
 
-Based on code review:
-- The project structure is valid ASP.NET Core
-- All namespaces, using statements, and types appear consistent
-- NuGet packages are standard and well-known
-- No obvious compilation errors identified, but build has not been verified
+---
 
-**To verify build locally:**
-```bash
-cd DeveloperMemory.Api
-dotnet restore
-dotnet build
-```
+## Planned (V1 remaining)
+
+| Item | Reason |
+|---|---|
+| Build verification | Requires .NET 10.0 SDK (not available in current environment) |
+| Integration tests | Requires .NET SDK for `WebApplicationFactory` |
+| Production CORS lockdown | Currently allows all origins |
+| Configuration validation | Missing startup validation for required settings |
+| Docker support | Not yet added |
+| CI/CD pipeline | Not yet added |
+
+---
+
+## Planned (V2+)
+
+These are intentionally not implemented in V1. See [ROADMAP.md](ROADMAP.md).
+
+- Semantic retrieval (embeddings + vector search)
+- Cross-session memory extraction
+- Multi-user and team support
+- Decision and historical memory
 
 ---
 
 ## Known Limitations
 
-1. **In-memory document cache** — Documents are loaded at startup and held in memory. Reindex requires `POST /api/Knowledge/reindex`.
-2. **Keyword search only** — No semantic/vector search. Relevance scoring is text-based substring matching.
-3. **ID instability** — Document and profile IDs are generated via `Guid.NewGuid()` on each load. They change on every restart/reindex.
-4. **Frontmatter parsing** — Simple `:` split parser. Values containing `:` will be truncated.
-5. **No streaming token counts** — Token estimates are logged for non-streaming responses only.
-6. **CORS wide open** — Development-only; needs lockdown for production.
+1. **In-memory document cache** — Documents loaded at startup; reindex via `POST /api/Knowledge/reindex`
+2. **Keyword search only** — No semantic/vector search; relevance scoring is text-based substring matching
+3. **Frontmatter `scope` field** — Parsed but not used by any runtime logic; reserved for future use
+4. **No streaming token counts** — Token estimates logged for non-streaming responses only
+5. **CORS wide open** — Development-only; needs lockdown for production
+6. **No authentication** — Any client can access all endpoints

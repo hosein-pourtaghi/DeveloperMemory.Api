@@ -8,8 +8,6 @@ namespace DeveloperMemory.Api.Services;
 
 public class PromptBuilder
 {
-    private const int MaxKnowledgeContextLength = 2000;
-
     /// <summary>
     /// Enriches the OpenAI request messages with developer profile and relevant knowledge,
     /// while preserving the original conversation history. The original messages are never
@@ -175,44 +173,5 @@ public class PromptBuilder
         if (string.IsNullOrEmpty(text)) return string.Empty;
         if (text.Length <= maxLength) return text;
         return text[..maxLength] + "...";
-    }
-
-    // ── Legacy method kept for backward compatibility with ProxyController ──
-
-    /// <summary>
-    /// Legacy: Builds a single enriched prompt string from a PromptRequest.
-    /// Used by the legacy /api/Proxy endpoint. Prefer <see cref="BuildEnrichedRequest"/> for new code.
-    /// </summary>
-    public string BuildPrompt(PromptRequest request, List<DeveloperProfile> profiles, List<SearchResult> searchResults)
-    {
-        var profile = profiles.FirstOrDefault(p => p.Id.ToString() == request.ProfileId);
-        var systemPrompt = request.SystemPrompt ?? "You are a helpful assistant.";
-        var userQuery = request.Query ?? string.Empty;
-
-        var prompt = $"{systemPrompt}\n\n";
-
-        if (profile != null)
-        {
-            prompt += "Developer Profile:\n";
-            prompt += $"Name: {profile.Name}\n";
-            prompt += $"Role: {profile.Role}\n";
-            prompt += $"Skills: {string.Join(", ", profile.Skills)}\n";
-            prompt += $"Experience: {profile.Experience}\n";
-            prompt += $"Bio: {profile.Bio}\n\n";
-        }
-
-        if (searchResults.Count > 0)
-        {
-            prompt += "Relevant Knowledge:\n";
-            foreach (var result in searchResults)
-            {
-                prompt += $"- {result.Title} (Score: {result.Score:F2})\n";
-                prompt += $"  {Truncate(result.Content, 200)}\n";
-            }
-            prompt += "\n";
-        }
-
-        prompt += $"User Query: {userQuery}\n";
-        return prompt;
     }
 }

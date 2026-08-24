@@ -1,5 +1,7 @@
 using DeveloperMemory.Api.Models;
 using DeveloperMemory.Api.Services;
+using DeveloperMemory.Application.Contracts;
+using DeveloperMemory.Domain.Enums;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -21,6 +23,7 @@ public class OpenAIChatCompletionController : ControllerBase
     private readonly PromptBuilder _promptBuilder;
     private readonly KnowledgeService _knowledgeService;
     private readonly ProfileService _profileService;
+    private readonly IMemoryService _memoryService;
     private readonly RequestLogger _requestLogger;
     private readonly ModelSelectionSettings _modelSelection;
     private readonly ILogger<OpenAIChatCompletionController> _logger;
@@ -36,6 +39,7 @@ public class OpenAIChatCompletionController : ControllerBase
         PromptBuilder promptBuilder,
         KnowledgeService knowledgeService,
         ProfileService profileService,
+        IMemoryService memoryService,
         RequestLogger requestLogger,
         IOptions<ModelSelectionSettings> modelSelection,
         ILogger<OpenAIChatCompletionController> logger)
@@ -44,6 +48,7 @@ public class OpenAIChatCompletionController : ControllerBase
         _promptBuilder = promptBuilder;
         _knowledgeService = knowledgeService;
         _profileService = profileService;
+        _memoryService = memoryService;
         _requestLogger = requestLogger;
         _modelSelection = modelSelection.Value;
         _logger = logger;
@@ -104,7 +109,7 @@ public class OpenAIChatCompletionController : ControllerBase
                 "Mode detected: {Mode} | Selected model: {Model} | AutoSelect: {AutoSelect}",
                 mode, selectedModel, _modelSelection.AutoSelectModel);
 
-            // ── Step 3: Load developer profile and search knowledge ──
+            // ── Step 3: Load developer profile, search knowledge, and retrieve persistent memory ──
             var lastUserMessage = request.Messages.LastOrDefault(m => m.Role == "user");
             var searchQuery = lastUserMessage?.Content;
 
@@ -113,8 +118,26 @@ public class OpenAIChatCompletionController : ControllerBase
                 ? _knowledgeService.SearchDocuments(searchQuery, request.Project, request.Tags)
                 : new List<SearchResult>();
 
+            // Retrieve persistent memory entries relevant to this request
+            var memoryEntries = new List<DeveloperMemory.Application.DTOs.MemoryDto>();
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(searchQuery))
+                {
+                    memoryEntries = await _memoryService.SearchAsync(
+                        searchQuery,
+                        scope: null, // search all scopes
+                        projectId: null,
+                        ct: cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to retrieve persistent memory; continuing without it");
+            }
+
             // ── Step 4: Build enriched request (preserves conversation history) ──
-            var enrichedRequest = _promptBuilder.BuildEnrichedRequest(request, profiles, searchResults);
+            var enrichedRequest = _promptBuilder.BuildEnrichedRequest(request, profiles, searchResults, memoryEntries);
             var enrichedTokens = TokenEstimator.EstimateRequestTokens(enrichedRequest);
 
             // ── Step 5: Log enriched request ──

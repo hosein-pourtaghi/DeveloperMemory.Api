@@ -1,4 +1,5 @@
 using DeveloperMemory.Api.Models;
+using DeveloperMemory.Application.DTOs;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,31 +10,31 @@ namespace DeveloperMemory.Api.Services;
 public class PromptBuilder
 {
     private const int MaxKnowledgeContextLength = 2000;
+    private const int MaxMemoryEntries = 10;
 
     /// <summary>
-    /// Enriches the OpenAI request messages with developer profile and relevant knowledge,
-    /// while preserving the original conversation history. The original messages are never
-    /// modified or removed.
+    /// Enriches the OpenAI request messages with developer profile, relevant knowledge,
+    /// and persistent memory entries while preserving the original conversation history.
+    /// The original messages are never modified or removed.
     ///
     /// Instruction precedence (highest to lowest):
     ///   1. Client's existing system message (preserved and appended to, not replaced)
-    ///   2. DeveloperMemory profile context (appended to system message)
-    ///   3. Retrieved knowledge context (appended to system message)
-    ///   4. User messages (preserved as-is; last user message optionally gets knowledge hint)
+    ///   2. Persistent memory context (appended to system message)
+    ///   3. DeveloperMemory profile context (appended to system message)
+    ///   4. Retrieved knowledge context (appended to system message)
+    ///   5. User messages (preserved as-is)
     /// </summary>
-    /// <param name="request">The original OpenAI request. Not modified.</param>
-    /// <param name="profiles">Loaded developer profiles.</param>
-    /// <param name="searchResults">Knowledge search results relevant to the user's query.</param>
-    /// <returns>A new request with enriched messages, or the original if no enrichment is needed.</returns>
     public OpenAIChatCompletionRequest BuildEnrichedRequest(
         OpenAIChatCompletionRequest request,
         List<DeveloperProfile> profiles,
-        List<SearchResult> searchResults)
+        List<SearchResult> searchResults,
+        List<MemoryDto>? memories = null)
     {
         var hasProfileContext = profiles.Count > 0;
         var hasKnowledgeContext = searchResults.Count > 0;
+        var hasMemoryContext = memories?.Count > 0;
 
-        if (!hasProfileContext && !hasKnowledgeContext)
+        if (!hasProfileContext && !hasKnowledgeContext && !hasMemoryContext)
         {
             return request;
         }
@@ -43,6 +44,11 @@ public class PromptBuilder
         contextBuilder.AppendLine();
         contextBuilder.AppendLine("--- DeveloperMemory Context ---");
         contextBuilder.AppendLine();
+
+        if (hasMemoryContext)
+        {
+            contextBuilder.AppendLine(BuildMemoryContext(memories!));
+        }
 
         if (hasProfileContext)
         {
@@ -165,6 +171,36 @@ public class PromptBuilder
         if (searchResults.Count > 5)
         {
             sb.AppendLine($"({searchResults.Count - 5} additional results omitted for brevity)");
+        }
+
+        return sb.ToString();
+    }
+
+    private string BuildMemoryContext(List<MemoryDto> memories)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("[Persistent Memory]");
+        sb.AppendLine("These are facts, preferences, and decisions from your persistent memory. Use them as authoritative context.");
+        sb.AppendLine();
+
+        var included = 0;
+        foreach (var memory in memories)
+        {
+            if (included >= MaxMemoryEntries) break;
+
+            var contentPreview = Truncate(memory.Content, 300);
+            sb.AppendLine($"## {memory.Title}");
+            sb.AppendLine($"Scope: {memory.Scope} | State: {memory.State} | Importance: {memory.Importance:F1}");
+            if (memory.Tags.Count > 0)
+                sb.AppendLine($"Tags: {string.Join(", ", memory.Tags)}");
+            sb.AppendLine(contentPreview);
+            sb.AppendLine();
+            included++;
+        }
+
+        if (memories.Count > MaxMemoryEntries)
+        {
+            sb.AppendLine($"({memories.Count - MaxMemoryEntries} additional memories omitted for brevity)");
         }
 
         return sb.ToString();

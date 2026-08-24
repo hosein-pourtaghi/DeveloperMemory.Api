@@ -1,15 +1,75 @@
 using Serilog;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using DeveloperMemory.Api.Services;
 using DeveloperMemory.Api.Infrastructure.Configuration;
 using DeveloperMemory.Api.Infrastructure.Middleware;
+using DeveloperMemory.Infrastructure.DependencyInjection;
+using DeveloperMemory.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ── OpenTelemetry ──
+var otelEnabled = builder.Configuration.GetValue<bool>("OpenTelemetry:Enabled");
+var otelServiceName = builder.Configuration.GetValue<string>("OpenTelemetry:ServiceName") ?? "DeveloperMemory.Api";
+var otlpEndpoint = builder.Configuration.GetValue<string>("OpenTelemetry:OtlpEndpoint");
+
+if (otelEnabled)
+{
+    builder.Services.AddOpenTelemetry()
+        .ConfigureResource(resource => resource.AddService(otelServiceName))
+        .WithTracing(tracing =>
+        {
+            tracing.AddAspNetCoreInstrumentation()
+                .AddHttpClientInstrumentation();
+            if (!string.IsNullOrEmpty(otlpEndpoint))
+            {
+                tracing.AddOtlpExporter(opts => opts.Endpoint = new Uri(otlpEndpoint));
+            }
+            else
+            {
+                tracing.AddConsoleExporter();
+            }
+        })
+        .WithMetrics(metrics =>
+        {
+            metrics.AddAspNetCoreInstrumentation()
+                .AddHttpClientInstrumentation();
+            if (!string.IsNullOrEmpty(otlpEndpoint))
+            {
+                metrics.AddOtlpExporter(opts => opts.Endpoint = new Uri(otlpEndpoint));
+            }
+            else
+            {
+                metrics.AddConsoleExporter();
+            }
+        });
+
+    builder.Logging.AddOpenTelemetry(options =>
+    {
+        options.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(otelServiceName));
+        if (!string.IsNullOrEmpty(otlpEndpoint))
+        {
+            options.AddOtlpExporter(opts => opts.Endpoint = new Uri(otlpEndpoint));
+        }
+        else
+        {
+            options.AddConsoleExporter();
+        }
+    });
+}
 
 // Configure Serilog
 builder.Host.UseSerilog((context, services) =>
 {
     services.ReadFrom.Configuration(context.Configuration);
 });
+
+// ── Infrastructure (EF Core, Repositories, Services) ──
+builder.Services.AddDeveloperMemoryInfrastructure(builder.Configuration);
 
 // Add services to the container
 builder.Services.AddControllers()
@@ -48,7 +108,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "DeveloperMemory API",
         Version = "v1",
-        Description = "OpenAI-compatible Developer Memory Gateway.",
+        Description = "Persistent AI memory and intelligence control plane.",
         Contact = new Microsoft.OpenApi.OpenApiContact
         {
             Name = "DeveloperMemory",
@@ -68,7 +128,7 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AppSettings"));
 builder.Services.Configure<ModelSelectionSettings>(builder.Configuration.GetSection("AppSettings:ModelSelection"));
 
-// Register services
+// Register existing services (file-based knowledge and profiles)
 builder.Services.AddSingleton<ProfileService>();
 builder.Services.AddSingleton<KnowledgeService>();
 builder.Services.AddSingleton<PromptBuilder>();
@@ -87,6 +147,26 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// ── Database Migration ──
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<DeveloperMemoryDbContext>();
+    var useInMemory = app.Configuration.GetValue<bool>("UseInMemoryDatabase");
+
+    if (!useInMemory)
+    {
+        try
+        {
+            await dbContext.Database.MigrateAsync();
+            Log.Information("Database migration applied successfully.");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Database migration failed. Application will continue with in-memory fallback.");
+        }
+    }
+}
 
 // Diagnostic: log incoming request bodies for /v1/*
 app.UseMiddleware<RequestLoggingMiddleware>();
@@ -116,6 +196,15 @@ var knowledgeService = app.Services.GetRequiredService<KnowledgeService>();
 await knowledgeService.LoadDocumentsAsync();
 
 // Health check endpoint
-app.MapGet("/health", () => Results.Ok(new { Status = "Healthy", Timestamp = DateTime.UtcNow }));
+app.MapGet("/health", async (DeveloperMemoryDbContext dbContext) =>
+{
+    var canConnect = await dbContext.Database.CanConnectAsync();
+    return Results.Ok(new
+    {
+        Status = canConnect ? "Healthy" : "Degraded",
+        Database = canConnect ? "Connected" : "Unavailable",
+        Timestamp = DateTime.UtcNow
+    });
+});
 
 app.Run();

@@ -1,0 +1,58 @@
+services:
+  api:
+    build: .
+    ports:
+      - "5041:5041"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - UseInMemoryDatabase=true
+      - AppSettings__FreeLlmApi__BaseUrl=http://host.docker.internal:3001/v1
+    volumes:
+      - ./src/DeveloperMemory.Api/Knowledge:/app/Knowledge
+      - ./src/DeveloperMemory.Api/Profiles:/app/Profiles
+      - ./logs:/app/logs
+    depends_on:
+      - redis
+
+  api-postgres:
+    build: .
+    ports:
+      - "5041:5041"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - UseInMemoryDatabase=false
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=developermemory;Username=developer;Password=devpassword
+      - AppSettings__FreeLlmApi__BaseUrl=http://host.docker.internal:3001/v1
+    volumes:
+      - ./src/DeveloperMemory.Api/Knowledge:/app/Knowledge
+      - ./src/DeveloperMemory.Api/Profiles:/app/Profiles
+      - ./logs:/app/logs
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: developermemory
+      POSTGRES_USER: developer
+      POSTGRES_PASSWORD: devpassword
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U developer -d developermemory"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:

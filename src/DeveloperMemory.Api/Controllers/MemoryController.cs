@@ -1,6 +1,7 @@
 using DeveloperMemory.Application.Contracts;
 using DeveloperMemory.Application.DTOs;
 using DeveloperMemory.Application.Exceptions;
+using DeveloperMemory.Domain.Entities;
 using DeveloperMemory.Domain.Enums;
 using Microsoft.AspNetCore.Mvc;
 
@@ -11,11 +12,16 @@ namespace DeveloperMemory.Api.Controllers;
 public class MemoryController : ControllerBase
 {
     private readonly IMemoryService _memoryService;
+    private readonly IMemoryRetrievalService _retrievalService;
     private readonly ILogger<MemoryController> _logger;
 
-    public MemoryController(IMemoryService memoryService, ILogger<MemoryController> logger)
+    public MemoryController(
+        IMemoryService memoryService,
+        IMemoryRetrievalService retrievalService,
+        ILogger<MemoryController> logger)
     {
         _memoryService = memoryService;
+        _retrievalService = retrievalService;
         _logger = logger;
     }
 
@@ -157,5 +163,43 @@ public class MemoryController : ControllerBase
     {
         var stats = await _memoryService.GetStatsAsync(ct);
         return Ok(stats);
+    }
+
+    /// <summary>
+    /// Privacy-aware memory retrieval with ranking and context budgeting.
+    /// Returns memories eligible for the given context, ranked by relevance
+    /// and constrained by the token budget.
+    /// </summary>
+    [HttpPost("retrieve")]
+    public async Task<ActionResult<RetrievedMemoriesResult>> Retrieve(
+        [FromBody] RetrieveRequest request,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Query))
+        {
+            return BadRequest(new { error = new { message = "Query is required.", code = "validation_error" } });
+        }
+
+        // Clamp limits to prevent abuse
+        const int maxAllowedResults = 100;
+        const int maxAllowedBudget = 100000;
+        var effectiveMaxResults = Math.Clamp(request.MaximumResults, 1, maxAllowedResults);
+        var effectiveBudget = Math.Clamp(request.ContextTokenBudget, 0, maxAllowedBudget);
+
+        var retrievalRequest = new RetrievalRequest
+        {
+            UserId = request.UserId,
+            ProjectId = request.ProjectId,
+            WorkspaceId = request.WorkspaceId,
+            Query = request.Query,
+            RequestedScopes = request.RequestedScopes,
+            MaximumResults = effectiveMaxResults,
+            ContextTokenBudget = effectiveBudget,
+            RequiredCategories = request.RequiredCategories,
+            ExcludedCategories = request.ExcludedCategories
+        };
+
+        var result = await _retrievalService.RetrieveAsync(retrievalRequest, ct);
+        return Ok(result);
     }
 }

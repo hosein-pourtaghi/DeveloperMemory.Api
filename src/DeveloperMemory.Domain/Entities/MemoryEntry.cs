@@ -10,6 +10,8 @@ public class MemoryEntry : BaseEntity
     public MemoryState State { get; set; } = MemoryState.Active;
     public DataClassification Classification { get; set; } = DataClassification.Internal;
     public Guid? ProjectId { get; set; }
+    public string? WorkspaceId { get; set; }
+    public string? UserId { get; set; }
     public string? Source { get; set; }
     public string? TagsJson { get; set; }
     public Guid? SupersededById { get; set; }

@@ -1,6 +1,8 @@
 using DeveloperMemory.Api.Models;
 using DeveloperMemory.Api.Services;
 using DeveloperMemory.Application.Contracts;
+using DeveloperMemory.Application.DTOs;
+using DeveloperMemory.Domain.Entities;
 using DeveloperMemory.Domain.Enums;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -23,7 +25,7 @@ public class OpenAIChatCompletionController : ControllerBase
     private readonly PromptBuilder _promptBuilder;
     private readonly KnowledgeService _knowledgeService;
     private readonly ProfileService _profileService;
-    private readonly IMemoryService _memoryService;
+    private readonly IMemoryRetrievalService _retrievalService;
     private readonly RequestLogger _requestLogger;
     private readonly ModelSelectionSettings _modelSelection;
     private readonly ILogger<OpenAIChatCompletionController> _logger;
@@ -39,7 +41,7 @@ public class OpenAIChatCompletionController : ControllerBase
         PromptBuilder promptBuilder,
         KnowledgeService knowledgeService,
         ProfileService profileService,
-        IMemoryService memoryService,
+        IMemoryRetrievalService retrievalService,
         RequestLogger requestLogger,
         IOptions<ModelSelectionSettings> modelSelection,
         ILogger<OpenAIChatCompletionController> logger)
@@ -48,7 +50,7 @@ public class OpenAIChatCompletionController : ControllerBase
         _promptBuilder = promptBuilder;
         _knowledgeService = knowledgeService;
         _profileService = profileService;
-        _memoryService = memoryService;
+        _retrievalService = retrievalService;
         _requestLogger = requestLogger;
         _modelSelection = modelSelection.Value;
         _logger = logger;
@@ -118,22 +120,59 @@ public class OpenAIChatCompletionController : ControllerBase
                 ? _knowledgeService.SearchDocuments(searchQuery, request.Project, request.Tags)
                 : new List<SearchResult>();
 
-            // Retrieve persistent memory entries relevant to this request
-            var memoryEntries = new List<DeveloperMemory.Application.DTOs.MemoryDto>();
+            // Retrieve persistent memory via centralized retrieval pipeline
+            var memoryEntries = new List<MemoryDto>();
             try
             {
                 if (!string.IsNullOrWhiteSpace(searchQuery))
                 {
-                    memoryEntries = await _memoryService.SearchAsync(
-                        searchQuery,
-                        scope: null, // search all scopes
-                        projectId: null,
-                        ct: cancellationToken);
+                    // Attempt to parse Project string as a Guid for project-scoped retrieval
+                    Guid? projectGuid = null;
+                    if (!string.IsNullOrWhiteSpace(request.Project) &&
+                        Guid.TryParse(request.Project, out var parsed))
+                    {
+                        projectGuid = parsed;
+                    }
+
+                    var promptContext = await _retrievalService.BuildPromptContextAsync(
+                        new RetrievalRequest
+                        {
+                            Query = searchQuery,
+                            ProjectId = projectGuid,
+                            UserId = request.User ?? "anonymous",
+                            MaximumResults = 10,
+                            ContextTokenBudget = 2000
+                        },
+                        cancellationToken);
+
+                    // Convert RetrievedMemory to MemoryDto for backward compatibility with PromptBuilder.
+                    // Retrieval metadata (EligibilityReason, ScoreBreakdown, RelevanceScore)
+                    // is preserved in PromptContext for the future Prompt Intelligence Engine.
+                    memoryEntries = promptContext.RetrievedMemories.Select(rm => new MemoryDto
+                    {
+                        Id = rm.MemoryId,
+                        Title = rm.Title,
+                        Content = rm.Content,
+                        Scope = rm.Scope,
+                        State = rm.State,
+                        Classification = rm.Classification,
+                        ProjectId = rm.ProjectId,
+                        Source = rm.Source,
+                        Tags = rm.Tags,
+                        Importance = rm.Importance,
+                        UpdatedAt = rm.UpdatedAt
+                    }).ToList();
+
+                    _logger.LogInformation(
+                        "Retrieval pipeline: {Selected} memories selected, {Tokens} estimated tokens, {Duration}ms",
+                        promptContext.Metadata.SelectedCount,
+                        promptContext.Metadata.EstimatedTokensUsed,
+                        promptContext.Metadata.RetrievalDurationMs);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to retrieve persistent memory; continuing without it");
+                _logger.LogWarning(ex, "Failed to retrieve persistent memory via pipeline; continuing without it");
             }
 
             // ── Step 4: Build enriched request (preserves conversation history) ──

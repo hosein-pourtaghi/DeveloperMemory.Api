@@ -18,7 +18,7 @@ DeveloperMemory.Api is a **persistent, intelligent AI memory layer and Memory In
 
 2. **Source code determines current implementation.** Do not claim features exist if they do not, and do not mark implemented features as "future work."
 
-3. **Do not collapse the project** back into a single-project structure. The4-project separation is intentional.
+3. **Do not collapse the project** back into a single-project structure. The 4-project separation is intentional.
 
 4. **Do not place business logic in the API project.** Use cases belong in Application. Business rules belong in Domain. Infrastructure implements external concerns.
 
@@ -39,43 +39,50 @@ DeveloperMemory.Api is a **persistent, intelligent AI memory layer and Memory In
 ## Project Structure
 
 ```
-DeveloperMemory.Api/
-├── Controllers/
-│   ├── MemoryController.cs         # /api/Memory (CRUD, supersede, expire, stats)
-│   ├── ProjectsController.cs       # /api/Projects (CRUD)
-│   ├── KnowledgeController.cs      # /api/Knowledge (file-based search, CRUD)
-│   ├── ProfilesController.cs       # /api/Profiles (file-based loading)
-│   └── OpenAIChatCompletionController.cs  # /v1/chat/completions (gateway)
-├── Services/
-│   ├── PromptBuilder.cs            # Enriches OpenAI requests with context
-│   ├── ModeDetector.cs             # Heuristic plan vs build detection
-│   ├── KnowledgeService.cs         # Markdown document parsing + search
-│   ├── ProfileService.cs           # Markdown profile parsing
-│   ├── FreeLlmApiClient.cs         # HTTP client for OpenAI-compatible providers
-│   ├── TokenEstimator.cs           # ~4 chars/token heuristic
-│   └── RequestLogger.cs            # Token metrics logging
-├── Models/                          # OpenAI types, knowledge, profiles
-├── Infrastructure/
-│   ├── Configuration/               # AppSettings, ModelSelectionSettings
-│   └── Middleware/                   # Exception handler, request logger
-├── Knowledge/                       # Markdown knowledge documents
-└── Profiles/                        # Markdown developer profiles
+src/
+├── DeveloperMemory.Api/
+│   ├── Controllers/
+│   │   ├── MemoryController.cs         # /api/Memory (CRUD, supersede, expire, stats)
+│   │   ├── ProjectsController.cs       # /api/Projects (CRUD)
+│   │   ├── KnowledgeController.cs      # /api/Knowledge (file-based search, CRUD)
+│   │   ├── ProfilesController.cs       # /api/Profiles (file-based loading)
+│   │   └── OpenAIChatCompletionController.cs  # /v1/chat/completions (gateway)
+│   ├── Services/
+│   │   ├── PromptBuilder.cs            # Enriches OpenAI requests with context
+│   │   ├── ModeDetector.cs             # Heuristic plan vs build detection
+│   │   ├── KnowledgeService.cs         # Markdown document parsing + search
+│   │   ├── ProfileService.cs           # Markdown profile parsing
+│   │   ├── FreeLlmApiClient.cs         # HTTP client for OpenAI-compatible providers
+│   │   ├── TokenEstimator.cs           # ~4 chars/token heuristic
+│   │   └── RequestLogger.cs            # Token metrics logging
+│   ├── Models/                          # OpenAI types, knowledge, profiles
+│   ├── Infrastructure/
+│   │   ├── Configuration/               # AppSettings, ModelSelectionSettings
+│   │   └── Middleware/                   # Exception handler, request logger
+│   ├── Knowledge/                       # Markdown knowledge documents
+│   └── Profiles/                        # Markdown developer profiles
+│
+├── DeveloperMemory.Domain/
+│   ├── Entities/                        # MemoryEntry, Project, BaseEntity
+│   ├── Enums/                           # MemoryScope, MemoryState, DataClassification
+│   └── Interfaces/                      # IMemoryRepository, IProjectRepository
+│
+├── DeveloperMemory.Application/
+│   ├── Contracts/                       # IMemoryService, IProjectService
+│   ├── Services/                        # MemoryService, ProjectService
+│   ├── DTOs/                            # Request/response DTOs
+│   └── Exceptions/                      # DomainException, NotFoundException variants
+│
+└── DeveloperMemory.Infrastructure/
+    ├── Persistence/                     # DbContext, Repositories, EF Configurations
+    ├── Migrations/                      # EF Core migrations
+    └── DependencyInjection/             # ServiceCollectionExtensions
 
-DeveloperMemory.Domain/
-├── Entities/                        # MemoryEntry, Project, BaseEntity
-├── Enums/                           # MemoryScope, MemoryState, DataClassification
-└── Interfaces/                      # IMemoryRepository, IProjectRepository
-
-DeveloperMemory.Application/
-├── Contracts/                       # IMemoryService, IProjectService
-├── Services/                        # MemoryService, ProjectService
-├── DTOs/                            # Request/response DTOs
-└── Exceptions/                      # DomainException, NotFoundException variants
-
-DeveloperMemory.Infrastructure/
-├── Persistence/                     # DbContext, Repositories, EF Configurations
-├── Migrations/                      # EF Core migrations
-└── DependencyInjection/             # ServiceCollectionExtensions
+tests/
+└── DeveloperMemory.Infrastructure.Tests/
+    ├── InMemoryDbFixture.cs             # Shared EF Core InMemory fixture
+    ├── MemoryRepositoryTests.cs         # Memory repository tests
+    └── ProjectRepositoryTests.cs        # Project repository tests
 ```
 
 ---
@@ -116,23 +123,23 @@ DeveloperMemory.Infrastructure/
 ## How to Extend
 
 ### Adding a New Memory Capability
-1. Define domain concepts in `DeveloperMemory.Domain`
-2. Add repository interface in `DeveloperMemory.Domain/Interfaces`
-3. Implement in `DeveloperMemory.Infrastructure/Persistence`
-4. Add service contract in `DeveloperMemory.Application/Contracts`
-5. Implement service in `DeveloperMemory.Application/Services`
-6. Add controller endpoints in `DeveloperMemory.Api/Controllers`
+1. Define domain concepts in `src/DeveloperMemory.Domain`
+2. Add repository interface in `src/DeveloperMemory.Domain/Interfaces`
+3. Implement in `src/DeveloperMemory.Infrastructure/Persistence`
+4. Add service contract in `src/DeveloperMemory.Application/Contracts`
+5. Implement service in `src/DeveloperMemory.Application/Services`
+6. Add controller endpoints in `src/DeveloperMemory.Api/Controllers`
 7. Register in `ServiceCollectionExtensions.cs`
 8. Add tests in `tests/`
 
 ### Adding a New Model/Provider
-1. Create a new API client class in `DeveloperMemory.Api/Services/`
+1. Create a new API client class in `src/DeveloperMemory.Api/Services/`
 2. Register it in DI (or behind an interface for replaceability)
 3. Update configuration in `AppSettings.cs`
 4. Update controller to use the new provider
 
 ### Adding a New Knowledge Source
-1. Create `.md` file in `Knowledge/` with YAML frontmatter
+1. Create `.md` file in `src/DeveloperMemory.Api/Knowledge/` with YAML frontmatter
 2. Use `title`, `project`, and `tags` fields (see [KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md))
 3. Call `POST /api/Knowledge/reindex` to reload
 

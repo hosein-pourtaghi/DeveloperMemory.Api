@@ -97,12 +97,13 @@ See [CURRENT_STATUS.md](CURRENT_STATUS.md) for the full implementation inventory
 ## Architecture
 
 ```
-DeveloperMemory.Api/              # API layer, controllers, services, models
-DeveloperMemory.Application/      # Use cases, contracts, DTOs, exceptions
-DeveloperMemory.Domain/           # Entities, enums, repository interfaces
-DeveloperMemory.Infrastructure/   # EF Core, persistence, DI registration
+src/
+├── DeveloperMemory.Api/              # API layer, controllers, services, models
+├── DeveloperMemory.Application/      # Use cases, contracts, DTOs, exceptions
+├── DeveloperMemory.Domain/           # Entities, enums, repository interfaces
+└── DeveloperMemory.Infrastructure/   # EF Core, persistence, DI registration
 tests/
-  DeveloperMemory.Infrastructure.Tests/  # xUnit repository tests
+└── DeveloperMemory.Infrastructure.Tests/  # xUnit repository tests
 ```
 
 **Dependency direction:** Domain ← Application ← Infrastructure ← API
@@ -114,7 +115,7 @@ See [CLAUDE.md](CLAUDE.md) for complete technical reference and [PROJECT_VISION.
 ## Quick Start
 
 ```bash
-cd DeveloperMemory.Api
+cd src/DeveloperMemory.Api
 dotnet restore
 dotnet run
 ```

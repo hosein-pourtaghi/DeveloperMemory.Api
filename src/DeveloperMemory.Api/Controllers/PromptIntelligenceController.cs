@@ -142,6 +142,49 @@ public class PromptIntelligenceController : ControllerBase
     }
 
     /// <summary>
+    /// Get all enabled prompt profiles.
+    /// </summary>
+    [HttpGet("profiles")]
+    public async Task<ActionResult<object>> GetProfiles(
+        IPromptProfileProvider profileProvider,
+        CancellationToken ct)
+    {
+        var profiles = await profileProvider.GetEnabledProfilesAsync(ct);
+        return Ok(profiles.Select(p => new
+        {
+            p.Id,
+            p.Name,
+            p.Description,
+            p.Version,
+            p.Enabled,
+            configuration = p.GetConfiguration()
+        }));
+    }
+
+    /// <summary>
+    /// Get a specific prompt profile by name.
+    /// </summary>
+    [HttpGet("profiles/{name}")]
+    public async Task<ActionResult<object>> GetProfile(
+        string name,
+        IPromptProfileProvider profileProvider,
+        CancellationToken ct)
+    {
+        var profile = await profileProvider.GetByNameAsync(name, ct);
+        if (profile == null) return NotFound();
+
+        return Ok(new
+        {
+            profile.Id,
+            profile.Name,
+            profile.Description,
+            profile.Version,
+            profile.Enabled,
+            configuration = profile.GetConfiguration()
+        });
+    }
+
+    /// <summary>
     /// Process a request through the full intelligence pipeline.
     /// Returns a complete PromptPackage ready for downstream consumption.
     /// </summary>

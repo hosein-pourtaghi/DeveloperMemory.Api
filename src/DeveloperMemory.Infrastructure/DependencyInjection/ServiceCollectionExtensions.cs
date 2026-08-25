@@ -155,11 +155,42 @@ public static class ServiceCollectionExtensions
         });
 
         // Phase 9: Prompt Intelligence & Context Orchestration
-        services.AddScoped<IIntentAnalyzer, DeterministicIntentAnalyzer>();
+        services.AddScoped<DeterministicIntentAnalyzer>();
         services.AddScoped<IProjectContextProvider, ProjectContextProvider>();
         services.AddScoped<IContextOrchestrator, ContextOrchestrator>();
         services.AddScoped<PromptConstructionEngine>();
         services.AddScoped<DeterministicPromptOptimizer>();
+
+        // Phase 10: Hybrid Prompt Intelligence
+        // Intent analysis — deterministic always available, LLM optional
+        services.AddScoped<IIntentResolver, IntentResolver>();
+        services.AddSingleton<IntentResolutionPolicy>();
+
+        if (memoryIntelligenceOptions.IsAvailable)
+        {
+            services.AddScoped<IIntentAnalyzer>(sp =>
+            {
+                var deterministic = sp.GetRequiredService<DeterministicIntentAnalyzer>();
+                var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+                var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<MemoryIntelligenceOptions>>();
+                var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<LlmIntentAnalyzer>>();
+                var llm = new LlmIntentAnalyzer(httpClientFactory, options, logger);
+                var resolver = sp.GetRequiredService<IIntentResolver>();
+                var resolverLogger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<IntentResolver>>();
+                return new HybridIntentAnalyzer(deterministic, llm, resolver, resolverLogger);
+            });
+        }
+        else
+        {
+            services.AddScoped<IIntentAnalyzer, DeterministicIntentAnalyzer>();
+        }
+
+        // LLM prompt optimizer (optional)
+        services.AddScoped<LlmPromptOptimizer>();
+        services.AddScoped<PromptValidator>();
+
+        // Prompt profiles
+        services.AddSingleton<IPromptProfileProvider, PromptProfileProvider>();
 
         return services;
     }

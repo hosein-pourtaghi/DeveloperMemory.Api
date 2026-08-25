@@ -9,6 +9,8 @@ public class CreateMemoryRequest
     public MemoryScope Scope { get; set; } = MemoryScope.Global;
     public DataClassification Classification { get; set; } = DataClassification.Internal;
     public Guid? ProjectId { get; set; }
+    public string? WorkspaceId { get; set; }
+    public string? UserId { get; set; }
     public string? Source { get; set; }
     public List<string>? Tags { get; set; }
     public DateTime? ExpiresAt { get; set; }

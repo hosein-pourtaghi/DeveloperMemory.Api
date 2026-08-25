@@ -82,6 +82,8 @@ public class MemoryService : IMemoryService
             State = MemoryState.Active,
             Classification = request.Classification,
             ProjectId = request.Scope == MemoryScope.Project ? request.ProjectId : null,
+            WorkspaceId = request.Scope == MemoryScope.Workspace ? request.WorkspaceId : null,
+            UserId = request.Scope == MemoryScope.Private ? request.UserId : null,
             Source = request.Source,
             ExpiresAt = request.ExpiresAt,
             Importance = request.Importance,

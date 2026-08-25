@@ -1,5 +1,6 @@
 using DeveloperMemory.Application.Contracts;
 using DeveloperMemory.Application.Services;
+using DeveloperMemory.Application.Services.Retrieval;
 using DeveloperMemory.Domain.Interfaces;
 using DeveloperMemory.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -43,6 +44,12 @@ public static class ServiceCollectionExtensions
         // Application services
         services.AddScoped<IMemoryService, MemoryService>();
         services.AddScoped<IProjectService, ProjectService>();
+
+        // Phase 3: Retrieval pipeline
+        services.AddScoped<IMemoryRetrievalProvider, KeywordRetrievalProvider>();
+        services.AddScoped<IRetrievalRanker, RelevanceRanker>();
+        services.AddScoped<IContextBudgeter, CharacterContextBudgeter>();
+        services.AddScoped<IMemoryRetrievalService, MemoryRetrievalService>();
 
         return services;
     }

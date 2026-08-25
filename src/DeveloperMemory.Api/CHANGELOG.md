@@ -1,5 +1,26 @@
 # Changelog
 
+## [3.0.0] - 2026-08-25
+
+### Comprehensive Documentation & Vision Alignment Update
+
+- **Full documentation rewrite** across all 8 documentation files to align with actual source code
+- **Corrected major contradictions** between documentation and implementation:
+  - Documentation previously claimed "no tests exist" — test project `tests/DeveloperMemory.Infrastructure.Tests/` with xUnit tests now documented
+  - Documentation previously described only a single-project file-based system — 4-project Clean Architecture now accurately documented
+  - Documentation previously claimed "persistent database storage is future work" — PostgreSQL + EF Core persistence is documented as implemented
+  - Documentation previously listed implemented features (memory lifecycle, project model, supersession) as "future V2" work
+- **Established canonical project identity** as "Persistent Intelligent AI Memory Layer / Memory Intelligence Gateway" across all documents
+- **Separated implemented vs planned** capabilities clearly in all documentation
+- **Updated PROJECT_VISION.md** as the canonical vision document with full architecture, principles, and target direction
+- **Updated README.md** with complete API reference, architecture summary, and accurate current capabilities
+- **Updated CURRENT_STATUS.md** with verified component inventory across all4 projects and test project
+- **Updated ROADMAP.md** to remove already-implemented features from future phases, accurate next steps
+- **Updated CLAUDE.md** with correct 4-project structure, dependency injection table, domain model, and coding standards
+- **Updated AGENTS.md** with accurate architecture rules, project structure, and extension patterns
+- **Updated KNOWLEDGE_FORMAT.md** to accurately describe supported fields and relationship to persistent memory
+- **Updated DOCUMENTATION.md** as the documentation index with hierarchy diagram
+
 ## [2.2.0] - 2026-08-24
 
 ### Repository Audit & Documentation Alignment

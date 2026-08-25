@@ -1,137 +1,268 @@
-# CLAUDE.md — Developer Memory API
+# CLAUDE.md — DeveloperMemory.Api
 
 ## Project Overview
 
-DeveloperMemory.Api is a **persistent, intelligent memory layer for AI applications and agents**. It enables AI systems to remember relevant information about a user, their preferences, goals, projects, decisions, and previous interactions across conversations.
+DeveloperMemory.Api is a **persistent, intelligent AI memory layer and Memory Intelligence Gateway**. It enables AI systems to remember relevant information across conversations and provide contextually appropriate responses.
 
 **Core purpose:** Prevent developers and AI coding assistants from repeatedly needing to rediscover or manually provide important context.
 
-**Core capabilities:**
-- Expose OpenAI-compatible `/v1/chat/completions` with full streaming support
-- Enrich requests with developer profiles and knowledge before forwarding
-- Preserve the original conversation history (multi-turn support)
-- Forward to any OpenAI-compatible downstream provider (FreeLLM, OpenAI, etc.)
-- Store and search technical documentation in Markdown with YAML frontmatter
+**Core architecture:** Clean Architecture with 4 source projects + 1 test project, PostgreSQL persistence via EF Core, and an OpenAI-compatible gateway with context enrichment.
 
-**Related documents:**
-- [PROJECT_VISION.md](PROJECT_VISION.md) — Mission, problem statement, core concepts
-- [CURRENT_STATUS.md](CURRENT_STATUS.md) — Implementation inventory and status
-- [ROADMAP.md](ROADMAP.md) — Development roadmap
-- [AGENTS.md](AGENTS.md) — AI agent coding guide
-- [KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md) — Frontmatter format reference
+**Source code is the authority** for current implementation status. Target architecture is documented in [PROJECT_VISION.md](PROJECT_VISION.md).
 
-## Architecture
+---
 
-### Target Architecture — Memory Intelligence Pipeline
+## Repository Structure
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    MEMORY CAPTURE PIPELINE                   │
-│                                                             │
-│  User or AI Application                                     │
-│         ↓                                                   │
-│  Interaction Processing                                     │
-│         ↓                                                   │
-│  Memory Capture and Extraction                              │
-│         ↓                                                   │
-│  Memory Classification                                      │
-│         ↓                                                   │
-│  Memory Storage and Lifecycle Management                    │
-└─────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────┐
-│                   MEMORY RETRIEVAL PIPELINE                  │
-│                                                             │
-│  AI Application                                             │
-│         ↓                                                   │
-│  Memory Retrieval                                           │
-│         ↓                                                   │
-│  Relevance Ranking                                          │
-│         ↓                                                   │
-│  Context Construction                                       │
-│         ↓                                                   │
-│  LLM Request Enrichment                                     │
-│         ↓                                                   │
-│  LLM Provider                                               │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Current Architecture (Working)
-
-```
-IDE AI Client / Cline
-        |
-        v
-DeveloperMemory.Api
-        |
-        v
-Request Validation / Normalization
-        |
-        v
-Load Developer Profile + Search Knowledge
-        |
-        v
-Prompt/Context Enrichment (preserves message history)
-        |
-        v
-OpenAI-Compatible Provider
-        |
-        v
-Streaming (SSE) or Standard Response
-        |
-        v
-IDE AI Client / Cline
-```
-
-### Layered Architecture
-
-```
-Presentation    ->  Controllers (OpenAIChatCompletionController, KnowledgeController, ProfilesController)
-                  Middleware  (GlobalExceptionMiddleware, RequestLoggingMiddleware)
-Application     ->  Services (KnowledgeService, ProfileService, PromptBuilder, FreeLlmApiClient, TokenEstimator, RequestLogger, ModeDetector)
-Domain          ->  Models (KnowledgeDocument, DeveloperProfile, SearchResult, OpenAI* types)
-Infrastructure  ->  Configuration (AppSettings), Logging (Serilog)
+src/
+├── DeveloperMemory.Domain/           # Entities, enums, repository interfaces
+│   ├── Entities/
+│   │   ├── BaseEntity.cs
+│   │   ├── MemoryEntry.cs
+│   │   └── Project.cs
+│   ├── Enums/
+│   │   ├── DataClassification.cs     # Public, Internal, Confidential, Secret
+│   │   ├── MemoryScope.cs            # Global, Project, Workspace, Private
+│   │   └── MemoryState.cs            # Active, Updated, Superseded, Expired, Archived, Deleted
+│   └── Interfaces/
+│       ├── IMemoryRepository.cs
+│       └── IProjectRepository.cs
+│
+├── DeveloperMemory.Application/      # Use cases, contracts, DTOs
+│   ├── Contracts/
+│   │   ├── IMemoryService.cs
+│   │   └── IProjectService.cs
+│   ├── Services/
+│   │   ├── MemoryService.cs
+│   │   └── ProjectService.cs
+│   ├── DTOs/
+│   │   ├── CreateMemoryRequest.cs
+│   │   ├── UpdateMemoryRequest.cs
+│   │   ├── MemoryDto.cs
+│   │   ├── MemoryStatsDto.cs
+│   │   ├── CreateProjectRequest.cs
+│   │   ├── UpdateProjectRequest.cs
+│   │   └── ProjectDto.cs
+│   └── Exceptions/
+│       ├── DomainException.cs
+│       ├── MemoryNotFoundException.cs
+│       └── ProjectNotFoundException.cs
+│
+├── DeveloperMemory.Infrastructure/   # EF Core, persistence, DI
+│   ├── Persistence/
+│   │   ├── DeveloperMemoryDbContext.cs
+│   │   ├── MemoryRepository.cs
+│   │   ├── ProjectRepository.cs
+│   │   └── Configurations/
+│   │       ├── MemoryEntryConfiguration.cs
+│   │       └── ProjectConfiguration.cs
+│   ├── Migrations/
+│   │   └── 20260824182548_InitialCreate.cs
+│   └── DependencyInjection/
+│       └── ServiceCollectionExtensions.cs
+│
+├── DeveloperMemory.Api/              # Controllers, services, gateway
+│   ├── Controllers/
+│   │   ├── MemoryController.cs
+│   │   ├── ProjectsController.cs
+│   │   ├── KnowledgeController.cs
+│   │   ├── ProfilesController.cs
+│   │   └── OpenAIChatCompletionController.cs
+│   ├── Services/
+│   │   ├── PromptBuilder.cs
+│   │   ├── ModeDetector.cs
+│   │   ├── KnowledgeService.cs
+│   │   ├── ProfileService.cs
+│   │   ├── FreeLlmApiClient.cs
+│   │   ├── TokenEstimator.cs
+│   │   └── RequestLogger.cs
+│   ├── Models/                       # OpenAI types, knowledge, profiles
+│   ├── Infrastructure/               # Configuration, Middleware
+│   ├── Knowledge/                    # Markdown knowledge documents
+│   └── Profiles/                     # Markdown developer profiles
+│
+tests/
+└── DeveloperMemory.Infrastructure.Tests/
+    ├── InMemoryDbFixture.cs          # Shared EF Core InMemory fixture
+    ├── MemoryRepositoryTests.cs      # Memory repository tests
+    └── ProjectRepositoryTests.cs     # Project repository tests
 ```
 
 ---
 
-## Memory Model (Target)
+## Architecture
 
-### Memory Types
+### Clean Architecture (Implemented)
 
-| Type | Description | Example |
+```
+Domain ← Application ← Infrastructure ← API
+```
+
+- **Domain** contains core business concepts (entities, enums, repository interfaces). No dependencies on other projects.
+- **Application** contains use cases (services), contracts (service interfaces), DTOs, and exceptions. Depends only on Domain.
+- **Infrastructure** implements persistence (EF Core, repositories), DI registration. Depends on Domain and Application.
+- **API** exposes transport (controllers), composition (Program.cs), and gateway services. Depends on all others.
+
+### Current Request Flow
+
+```
+AI Client Request
+        │
+        ▼
+OpenAIChatCompletionController
+        │
+        ├── Validate request
+        ├── Detect mode (ModeDetector)
+        ├── Select model (auto or client-specified)
+        ├── Load developer profiles (ProfileService)
+        ├── Search knowledge documents (KnowledgeService)
+        ├── Retrieve persistent memory (MemoryService.SearchAsync)
+        ├── Build enriched request (PromptBuilder)
+        │     ├── Append persistent memory context
+        │     ├── Append profile context
+        │     └── Append knowledge context
+        ├── Log token metrics (TokenEstimator + RequestLogger)
+        ├── Forward to provider (FreeLlmApiClient)
+        │     ├── Non-streaming: await response, serialize
+        │     └── Streaming: pipe SSE stream to client
+        └── Log response metrics
+```
+
+### Target Architecture (Planned)
+
+```
+External Clients
+        │
+        ▼
+API / Gateway Layer
+        │
+        ▼
+Application Orchestration
+        │
+        ▼
+Prompt Intelligence Engine
+        /       |       \
+       /        |        \
+      v         v         v
+Memory Intelligence  Project Context  Execution Planning
+      |                         |
+      v                         v
+Retrieval / Ranking       Agent / Model / Tools
+      |                         |
+      v                         v
+  Persistence            Provider Adapters
+      |
+      v
+PostgreSQL / Replaceable Stores
+```
+
+This target architecture is **not yet implemented**. See [PROJECT_VISION.md](PROJECT_VISION.md) for the full vision.
+
+---
+
+## Domain Model
+
+### MemoryEntry
+
+| Property | Type | Description |
 |---|---|---|
-| `Preference` | User's preferred way of doing things | "I prefer functional programming" |
-| `Instruction` | Explicit instruction to follow | "Always use TypeScript strict mode" |
-| `Constraint` | Limitation or restriction | "Never use console.log in production" |
-| `Goal` | What the user is trying to achieve | "Building a real-time chat app" |
-| `PersonalFact` | Information about the user | "I'm a senior backend developer" |
-| `ProjectContext` | Information about a specific project | "This project uses PostgreSQL" |
-| `TechnicalKnowledge` | Technical information | "The API uses JWT for authentication" |
-| `Decision` | A decision that was made | "We chose Redis for caching" |
-| `WorkingContext` | Temporary context for current work | "Currently debugging the auth module" |
+| `Id` | `Guid` | Primary key |
+| `Title` | `string` | Short descriptive title (max 500) |
+| `Content` | `string` | Full memory content |
+| `Scope` | `MemoryScope` | Where it applies (Global, Project, Workspace, Private) |
+| `State` | `MemoryState` | Lifecycle state (Active, Updated, Superseded, Expired, Archived, Deleted) |
+| `Classification` | `DataClassification` | Sensitivity (Public, Internal, Confidential, Secret) |
+| `ProjectId` | `Guid?` | Associated project (null for global memories) |
+| `Source` | `string?` | Provenance/origin |
+| `TagsJson` | `string?` | JSON-serialized tag list |
+| `SupersededById` | `Guid?` | ID of the memory that superseded this one |
+| `CreatedAt` | `DateTime` | Creation timestamp |
+| `UpdatedAt` | `DateTime` | Last update timestamp |
+| `ExpiresAt` | `DateTime?` | Optional expiration |
+| `Importance` | `double` | 0.0–1.0 importance score (default 0.5) |
+| `MetadataJson` | `string?` | Extensible metadata |
 
-### Memory States
+**Domain methods:** `SetTags()`, `Supersede(id)`, `Expire()`, `Archive()`, `SoftDelete()`
+**Computed properties:** `IsExpired`, `IsActive`
 
-| State | Description |
-|---|---|
-| `Active` | Currently valid and available for retrieval |
-| `Updated` | Has been modified (previous version superseded) |
-| `Superseded` | Replaced by newer information |
-| `Expired` | Past its expiration date |
-| `Archived` | No longer active but preserved for history |
-| `Deleted` | Removed from the system |
+### Project
 
-### Memory Scopes
-
-| Scope | Description | Lifetime |
+| Property | Type | Description |
 |---|---|---|
-| `Global` | Applies everywhere | Permanent |
-| `User` | Specific to a user | Permanent (until deleted) |
-| `Project` | Specific to a project | Permanent (until deleted) |
-| `Conversation` | Relevant only to current conversation | End of conversation |
-| `Session` | Temporary working context | End of session |
-| `Agent` | Specific to an AI agent | Agent lifetime |
+| `Id` | `Guid` | Primary key |
+| `Name` | `string` | Unique name (max 200) |
+| `Description` | `string?` | Optional description (max 2000) |
+| `ConfigurationJson` | `string?` | Extensible configuration |
+| `CreatedAt` | `DateTime` | Creation timestamp |
+| `UpdatedAt` | `DateTime` | Last update timestamp |
+| `Memories` | `ICollection<MemoryEntry>` | Navigation property |
+
+---
+
+## API Endpoints
+
+### Memory Management — `MemoryController` (`/api/Memory`)
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/Memory` | Create memory entry |
+| `GET` | `/api/Memory/{id}` | Get by ID |
+| `GET` | `/api/Memory` | Search/list (query, scope, projectId, tags) |
+| `PUT` | `/api/Memory/{id}` | Update fields |
+| `DELETE` | `/api/Memory/{id}` | Soft-delete (sets state to Deleted) |
+| `POST` | `/api/Memory/{id}/supersede` | Create replacement and mark old as superseded |
+| `POST` | `/api/Memory/expire` | Process all expired entries |
+| `GET` | `/api/Memory/stats` | Statistics by scope and state |
+
+### Projects — `ProjectsController` (`/api/Projects`)
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/Projects` | Create project |
+| `GET` | `/api/Projects` | List all |
+| `GET` | `/api/Projects/{id}` | Get by ID |
+| `PUT` | `/api/Projects/{id}` | Update |
+| `DELETE` | `/api/Projects/{id}` | Delete |
+
+### OpenAI-Compatible Gateway — `OpenAIChatCompletionController` (`/v1`)
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/v1/chat/completions` | Enriched chat completion (streaming or non-streaming) |
+| `GET` | `/v1/models` | List models from upstream provider |
+| `GET` | `/v1/models/{modelId}` | Get model details |
+
+**Chat completion processing:**
+1. Validate request
+2. Detect mode → select model
+3. Load profiles, search knowledge, retrieve persistent memory
+4. Build enriched request (append context to system message)
+5. Forward to downstream provider
+6. Stream or return response with token metrics
+
+### Knowledge — `KnowledgeController` (`/api/Knowledge`)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/Knowledge` | Search documents (query, project, tags) |
+| `GET` | `/api/Knowledge/documents` | List all |
+| `GET` | `/api/Knowledge/{id}` | Get by ID |
+| `POST` | `/api/Knowledge` | Create (title, content, project, tags) |
+| `POST` | `/api/Knowledge/reindex` | Reload all documents |
+
+### Profiles — `ProfilesController` (`/api/Profiles`)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/Profiles` | List loaded profiles |
+| `POST` | `/api/Profiles` | Load profile from file path |
+
+### Health
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | Database connectivity check |
 
 ---
 
@@ -139,140 +270,18 @@ Infrastructure  ->  Configuration (AppSettings), Logging (Serilog)
 
 | Registration | Type | Lifetime |
 |---|---|---|
-| `ProfileService` | Singleton | In-memory profile cache |
-| `KnowledgeService` | Singleton | In-memory document index |
+| `IMemoryRepository → MemoryRepository` | Scoped | EF Core DbContext |
+| `IProjectRepository → ProjectRepository` | Scoped | EF Core DbContext |
+| `IMemoryService → MemoryService` | Scoped | Application service |
+| `IProjectService → ProjectService` | Scoped | Application service |
+| `ProfileService` | Singleton | File-based, in-memory cache |
+| `KnowledgeService` | Singleton | File-based, in-memory index |
 | `PromptBuilder` | Singleton | Stateless prompt construction |
-| `FreeLlmApiClient` | HttpClient | Transient (via `AddHttpClient<T>`) |
-| `TokenEstimator` | Singleton | Stateless token estimation |
+| `FreeLlmApiClient` | Transient (HttpClient) | HTTP client for providers |
 | `RequestLogger` | Singleton | Stateless logging |
-| `ModeDetector` | Singleton | Stateless mode detection |
-| `AppSettings` | Options | Bound from `appsettings.json` -> `AppSettings` section |
-
----
-
-## Instruction Precedence (highest to lowest)
-
-1. **Client's system message** — Preserved and extended, never replaced
-2. **DeveloperMemory profile context** — Appended to system message
-3. **Knowledge context** — Relevant documents appended to system message
-4. **User messages** — Preserved as-is; original conversation history intact
-
----
-
-## OpenAI-Compatible API Reference
-
-### POST /v1/chat/completions
-
-Chat completion endpoint supporting both streaming and non-streaming.
-
-**Request body:**
-```json
-{
-  "model": "auto",
-  "messages": [
-    { "role": "system", "content": "You are a helpful assistant." },
-    { "role": "user", "content": "How do I use dependency injection?" }
-  ],
-  "temperature": 0.7,
-  "top_p": 1.0,
-  "max_tokens": 2048,
-  "stream": false,
-  "frequency_penalty": 0.0,
-  "presence_penalty": 0.0,
-  "stop": null,
-  "n": 1,
-  "user": "cline-user"
-}
-```
-
-**Standard OpenAI parameters forwarded:**
-- `model` — Model selection (resolved: per-request -> config -> "auto")
-- `messages` — Full conversation history (preserved)
-- `temperature` — Sampling temperature
-- `top_p` — Nucleus sampling
-- `max_tokens` / `max_completion_tokens` — Token limits
-- `stream` — Enable SSE streaming
-- `stream_options` — Streaming options (e.g., `include_usage`)
-- `frequency_penalty` — Frequency penalty
-- `presence_penalty` — Presence penalty
-- `stop` — Stop sequences
-- `n` — Number of completions
-- `user` — User identifier
-
-**DeveloperMemory extensions (optional):**
-- `project` — Filter knowledge by project
-- `tags` — Filter knowledge by tags
-- `profile_id` — Specific developer profile GUID
-
-**Non-standard fields** from the client are captured via `JsonExtensionData` and forwarded to the downstream provider without data loss.
-
-### GET /v1/models
-
-List available models from the upstream provider. Falls back to the configured default model if the upstream is unavailable.
-
-### GET /v1/models/{modelId}
-
-Get details for a specific model. Returns 404 with OpenAI-compatible error if not found.
-
-### Error Responses
-
-All errors on `/v1/*` endpoints follow the OpenAI-compatible format:
-
-```json
-{
-  "error": {
-    "message": "Description of the error",
-    "type": "error_type",
-    "code": "error_code",
-    "param": "parameter_name"
-  }
-}
-```
-
----
-
-## Management API Reference
-
-### Knowledge Controller (`/api/Knowledge`)
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/Knowledge` | Search documents (query, project, tags) |
-| `GET` | `/api/Knowledge/documents` | List all documents |
-| `GET` | `/api/Knowledge/{id}` | Get document by GUID |
-| `POST` | `/api/Knowledge` | Create document (body: `CreateDocumentRequest`) |
-| `POST` | `/api/Knowledge/reindex` | Reload and reindex all documents |
-
-### Profiles Controller (`/api/Profiles`)
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/Profiles` | List all loaded profiles |
-| `POST` | `/api/Profiles` | Load a profile from file path |
-
----
-
-## Data Models
-
-### KnowledgeDocument
-`Id` (Guid), `Title`, `Content`, `Project`, `Tags` (List<string>), `FilePath`, `LastModified`.
-
-### DeveloperProfile
-`Id` (Guid), `Name`, `Role`, `Skills` (List<string>), `Experience`, `Bio`, `FilePath`, `LastModified`.
-
-### SearchResult
-`Id` (Guid), `Title`, `Content`, `Project`, `Tags`, `Score` (double), `FilePath`.
-
-### OpenAIChatCompletionRequest
-Standard OpenAI fields plus DeveloperMemory extensions. Unknown fields captured via `JsonExtensionData`.
-
-### Message
-- `role` (string) — Message role
-- `content` (string?) — Message content
-- `tool_calls` (List<ToolCall>?) — Tool calls (for assistant messages)
-- `tool_call_id` (string?) — Tool call ID (for tool messages)
-- `name` (string?) — Name field
-- `ExtensionData` — Captures additional properties for forwarding
+| `AppSettings` | Options | Bound from `appsettings.json` |
+| `ModelSelectionSettings` | Options | Bound from `AppSettings:ModelSelection` |
+| `DeveloperMemoryDbContext` | Scoped | PostgreSQL or InMemory |
 
 ---
 
@@ -282,6 +291,10 @@ Standard OpenAI fields plus DeveloperMemory extensions. Unknown fields captured 
 
 ```json
 {
+  "UseInMemoryDatabase": false,
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Port=5432;Database=developermemory;Username=developer;Password=devpassword"
+  },
   "AppSettings": {
     "FreeLlmApi": {
       "BaseUrl": "http://localhost:3001/v1",
@@ -295,7 +308,8 @@ Standard OpenAI fields plus DeveloperMemory extensions. Unknown fields captured 
     },
     "Paths": {
       "KnowledgeFolder": "./Knowledge",
-      "ProfilesFolder": "./Profiles"
+      "ProfilesFolder": "./Profiles",
+      "RequestLogFolder": "./logs/requests"
     }
   }
 }
@@ -307,74 +321,102 @@ Use `__` separator:
 - `AppSettings__FreeLlmApi__BaseUrl`
 - `AppSettings__FreeLlmApi__ApiKey`
 - `AppSettings__FreeLlmApi__DefaultModel`
-- `AppSettings__Paths__KnowledgeFolder`
-- `AppSettings__Paths__ProfilesFolder`
 
 ### Model Resolution Priority
 
 1. Per-request `model` field (highest)
-2. `AppSettings:FreeLlmApi:DefaultModel` from config
+2. `AppSettings:FreeLlmApi:DefaultModel`
 3. `"auto"` fallback
-
-### FreeLLM Routing Modes
-
-| Mode | Description |
-|---|---|
-| `auto` | Router picks the best available model |
-| `auto:fast` | Router picks the fastest available model |
-| `auto:smart` | Router picks the most capable available model |
-| `fusion` | Multiple models answer in parallel, judge synthesizes |
-| Explicit ID | Pin to a specific model (e.g., `gpt-4`, `gemini-3.5-flash`) |
 
 ---
 
-## Build & Run
+## Testing
 
-```bash
-cd DeveloperMemory.Api
-dotnet restore
-dotnet build
-dotnet run
+### Test Project
+
+```
+tests/DeveloperMemory.Infrastructure.Tests/
+├── InMemoryDbFixture.cs       # Shared EF Core InMemory context (fresh per test)
+├── MemoryRepositoryTests.cs   # 7+ tests: CRUD, search, scope filtering, expiration, soft delete
+└── ProjectRepositoryTests.cs  # 7 tests: CRUD, list, delete
 ```
 
-- HTTP: `http://localhost:5041`
-- HTTPS: `https://localhost:7144`
-- Swagger: `/swagger` (Development only)
-- Health: `GET /health`
+**Framework:** xUnit 2.9.3 with EF Core InMemory 10.0.0
+**Coverage:** Repository layer (MemoryRepository, ProjectRepository)
 
-**Requires:** .NET 10.0 SDK installed on the machine.
+### Run Tests
+
+```bash
+dotnet test tests/DeveloperMemory.Infrastructure.Tests/
+```
+
+---
+
+## Coding Standards
+
+- **PascalCase** for classes, methods, properties
+- **camelCase** for locals, parameters
+- **`_camelCase`** for private fields
+- File-scoped namespaces
+- Nullable reference types enabled
+- Pass `CancellationToken` through async chains
+- Controllers delegate to services (thin controllers)
+- One class per file (exception: OpenAI types grouped in `OpenAIRequestResponse.cs`)
+
+---
+
+## Key Rules for AI Agents
+
+1. **Source code is the authority** for current implementation. Documentation may lag.
+2. **Do not collapse the project** back into a simple RAG gateway. The Clean Architecture structure is intentional.
+3. **Do not tightly couple** core logic to FreeLlmApiClient or one provider. Keep providers replaceable.
+4. **Do not place all new business logic** in the API project. Use Application layer for use cases, Domain for business rules.
+5. **Preserve Clean Architecture boundaries.** Domain → Application → Infrastructure → API.
+6. **Keep retrieval replaceable.** Use interfaces for any new retrieval strategy.
+7. **Treat Prompt Intelligence** as a core architectural capability, not a convenience feature.
+8. **Do not implement blind memory capture.** Selective and controlled capture is a design requirement.
+9. **Distinguish implemented features from planned architecture.** Source code = current. Vision doc = target.
+10. **Prefer incremental refactoring** over unnecessary rewrites.
+11. **Do not introduce heavyweight infrastructure** without a concrete need.
+12. **Maintain cloud-first suitability** while keeping local development working.
+13. **Preserve compatibility** with free/self-hosted alternatives where practical.
 
 ---
 
 ## Dependencies
 
+### Source Projects
+
+| Package | Version | Project | Purpose |
+|---|---|---|---|
+| `Microsoft.EntityFrameworkCore` | 10.0.0 | Infrastructure | ORM |
+| `Microsoft.EntityFrameworkCore.Design` | 10.0.0 | Infrastructure + Api | Migration tooling |
+| `Npgsql.EntityFrameworkCore.PostgreSQL` | 10.0.0 | Infrastructure | PostgreSQL provider |
+| `Microsoft.EntityFrameworkCore.InMemory` | 10.0.0 | Infrastructure + Tests | In-memory DB |
+| `Microsoft.Extensions.Configuration.Binder` | 10.0.0 | Infrastructure | Config binding |
+| `Serilog.AspNetCore` | 8.0.3 | Api | Structured logging |
+| `Serilog.Sinks.Console` | 6.0.0 | Api | Console output |
+| `Serilog.Sinks.File` | 6.0.0 | Api | File output |
+| `Microsoft.AspNetCore.OpenApi` | 10.0.10 | Api | OpenAPI spec |
+| `Swashbuckle.AspNetCore` | 10.0.1 | Api | Swagger UI |
+| `OpenTelemetry.*` | 1.18.0 | Api | Observability |
+
+### Test Project
+
 | Package | Version | Purpose |
 |---|---|---|
-| `Serilog.AspNetCore` | 8.0.3 | Structured logging |
-| `Serilog.Sinks.Console` | 6.0.0 | Console log output |
-| `Serilog.Sinks.File` | 6.0.0 | File log output with rolling |
-| `Microsoft.AspNetCore.OpenApi` | 10.0.10 | OpenAPI spec generation |
-| `Swashbuckle.AspNetCore` | 10.0.1 | Swagger UI |
+| `xunit` | 2.9.3 | Test framework |
+| `Microsoft.NET.Test.Sdk` | 17.13.0 | Test runner |
+| `xunit.runner.visualstudio` | 2.8.2 | VS integration |
+| `coverlet.collector` | 6.0.4 | Code coverage |
+| `Microsoft.EntityFrameworkCore.InMemory` | 10.0.0 | In-memory DB for tests |
 
-## Memory Model
+---
 
-DeveloperMemory distinguishes four conceptual layers:
+## Related Documentation
 
-| Concept | Description | V1 Status |
-|---|---|---|
-| **Developer Profile** | Persistent info about the developer: preferences, conventions, skills, role | ✅ File-based Markdown with YAML frontmatter |
-| **Knowledge Document** | Reusable info about projects or technologies: standards, rules, documentation | ✅ File-based Markdown with YAML frontmatter |
-| **Project Context** | Scoping information that associates knowledge with specific projects | ✅ `project` field in frontmatter and request |
-| **Decision / Historical Memory** | Important decisions, outcomes, historical context | ❌ Out of scope for V1 |
-
-The LLM proxy capability is an **integration feature**, not the conceptual center. The core value is the memory and context assembly, not the provider forwarding.
-
-## Limitations
-
-- **No authentication** — CORS is open, no auth middleware is enforced
-- **Keyword search only** — No semantic/vector search; relevance scoring is text-based
-- **In-memory cache** — Documents loaded on startup; reindex via `POST /api/Knowledge/reindex`
-- **ID instability** — Document/profile IDs regenerate on each load; use `FilePath` for stable identification
-- **No function/tool calling** — Tool call messages are forwarded but not processed by DeveloperMemory
-- **No embeddings endpoint** — Out of scope for V1
-- **Frontmatter parser limitations** — Simple `:` split; values containing `:` will be truncated
+- [PROJECT_VISION.md](PROJECT_VISION.md) — Canonical vision, principles, target architecture
+- [CURRENT_STATUS.md](CURRENT_STATUS.md) — Verified implementation inventory
+- [ROADMAP.md](ROADMAP.md) — Development roadmap
+- [AGENTS.md](AGENTS.md) — AI agent coding guide
+- [KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md) — Frontmatter format reference

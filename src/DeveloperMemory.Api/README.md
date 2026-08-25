@@ -1,54 +1,115 @@
-# Developer Memory API
+# DeveloperMemory.Api
 
-## What Is This?
+A **persistent, intelligent AI memory layer and Memory Intelligence Gateway**.
 
-Developer Memory API is a **persistent, intelligent memory layer for AI applications and agents**. It sits between AI systems and LLM providers as a Memory Intelligence Gateway, automatically enriching requests with relevant context accumulated over time.
+DeveloperMemory.Api sits between AI systems and LLM providers. It maintains persistent, structured, lifecycle-managed memory that helps AI coding assistants, agents, and tools access relevant context instead of starting from zero in every interaction.
 
-**The problem it solves:** AI models are stateless. They forget your preferences, ignore your project context, and require you to re-explain everything in every conversation. Developer Memory solves this by remembering important information once, retrieving it only when relevant, and providing it to AI systems at the right time.
+---
 
-**The vision:** Move AI from stateless responses based only on the current prompt to context-aware responses informed by relevant knowledge accumulated over time.
+## What It Does
 
-**The core problem it solves:** AI coding assistants start every conversation with zero context. DeveloperMemory ensures they always have access to your preferences, project rules, and relevant knowledge — automatically.
+**The problem:** AI models are stateless. They forget your preferences, ignore project context, and require you to re-explain everything in every conversation.
+
+**The solution:** DeveloperMemory.Api remembers relevant information once, retrieves it only when relevant, and provides it to AI systems at the right time — automatically.
 
 ## How It Works
 
 ```
 AI Application / Agent
-        ↓
+        │
+        ▼
 DeveloperMemory.Api  (Memory Intelligence Gateway)
-        ↓
-Load Developer Profile(s)
-        ↓
-Search Knowledge Documents (keyword-based)
-        ↓
-Assemble Context & Enrich System Message
-        ↓
-Mode Detection (Plan vs Build) → Auto Model Selection
-        ↓
-LLM Request Enrichment
-        ↓
-Forward to LLM Provider
-        ↓
+        │
+        ├── Load Developer Profile(s)
+        ├── Search Knowledge Documents (keyword-based)
+        ├── Retrieve Persistent Memory (PostgreSQL)
+        ├── Assemble Context & Enrich System Message
+        ├── Mode Detection (Plan vs Build) → Auto Model Selection
+        │
+        ▼
+Forward to LLM Provider (streaming or non-streaming)
+        │
+        ▼
 Response back to AI Application
 ```
 
-## Current Implementation Status
+---
 
-The project is a **working V1 implementation** with the following core capabilities:
+## Current Capabilities
 
-- ✅ OpenAI-compatible `/v1/chat/completions` with full streaming support
-- ✅ Developer profile loading from Markdown files with YAML frontmatter
-- ✅ Knowledge document loading, indexing, and keyword-based search
-- ✅ Automatic context enrichment that preserves conversation history
+### Persistent Memory System (Database-backed)
+- ✅ Full CRUD for memory entries with PostgreSQL persistence
+- ✅ Memory lifecycle: Active, Updated, Superseded, Expired, Archived, Deleted
+- ✅ Memory scopes: Global, Project, Workspace, Private
+- ✅ Data classification: Public, Internal, Confidential, Secret
+- ✅ Importance scoring for retrieval ranking
+- ✅ Tag-based filtering
+- ✅ Project-scoped memory
+- ✅ Manual supersession (create replacement, mark old as superseded)
+- ✅ Automatic expiration processing
+- ✅ Soft deletion
+- ✅ Statistics endpoint (counts by scope and state)
+
+### Project Management
+- ✅ Create, read, update, delete projects
+- ✅ Project-scoped memory association
+- ✅ Memory count per project
+
+### OpenAI-Compatible Gateway
+- ✅ `/v1/chat/completions` with full streaming (SSE) support
+- ✅ Context enrichment from profiles, knowledge, AND persistent memory
 - ✅ Mode detection (plan vs build) with automatic model selection
-- ✅ Token tracking and request logging
-- ✅ Management APIs for knowledge and profiles
-- ✅ Health check endpoint
-- ✅ Swagger/OpenAPI documentation
+- ✅ Token tracking and three-stage logging
+- ✅ OpenAI-compatible error responses
+- ✅ `/v1/models` and `/v1/models/{id}` endpoints
+- ✅ Multimodal content forwarding
 
-**Not yet implemented:** Tests, CI/CD, authentication, embeddings, vector search, multi-user support.
+### Legacy Knowledge & Profile System
+- ✅ Markdown knowledge documents with YAML frontmatter
+- ✅ Keyword-based relevance search
+- ✅ Developer profile loading from Markdown files
+- ✅ Knowledge creation API
+
+### Infrastructure
+- ✅ Clean Architecture (Domain → Application → Infrastructure → API)
+- ✅ Entity Framework Core with PostgreSQL
+- ✅ EF Core migrations
+- ✅ xUnit test project for repository layer
+- ✅ Health check endpoint
+- ✅ OpenTelemetry integration (configurable)
+- ✅ Swagger/OpenAPI documentation
+- ✅ Serilog structured logging
+
+### Not Yet Implemented
+- Authentication and authorization
+- Semantic/vector search (embeddings)
+- Automatic memory capture from conversations
+- Docker containerization
+- CI/CD pipeline
+- MCP integration
+- Agent runtime abstraction
+- Multi-user support
 
 See [CURRENT_STATUS.md](CURRENT_STATUS.md) for the full implementation inventory.
+
+---
+
+## Architecture
+
+```
+DeveloperMemory.Api/              # API layer, controllers, services, models
+DeveloperMemory.Application/      # Use cases, contracts, DTOs, exceptions
+DeveloperMemory.Domain/           # Entities, enums, repository interfaces
+DeveloperMemory.Infrastructure/   # EF Core, persistence, DI registration
+tests/
+  DeveloperMemory.Infrastructure.Tests/  # xUnit repository tests
+```
+
+**Dependency direction:** Domain ← Application ← Infrastructure ← API
+
+See [CLAUDE.md](CLAUDE.md) for complete technical reference and [PROJECT_VISION.md](PROJECT_VISION.md) for the full architectural vision.
+
+---
 
 ## Quick Start
 
@@ -58,26 +119,25 @@ dotnet restore
 dotnet run
 ```
 
-- **API**: `http://localhost:5041` / `https://localhost:7144`
+- **API**: `http://localhost:5041`
 - **Swagger UI**: `/swagger` (Development mode)
 - **Health Check**: `GET /health`
 
-## Cline Integration
+### Requirements
 
-Configure Cline (or any OpenAI-compatible client) with:
+- .NET 10.0 SDK
+- PostgreSQL (or set `"UseInMemoryDatabase": true` in appsettings.json)
 
-| Setting | Value |
-|---|---|
-| API Base URL | `http://localhost:5041/v1` |
-| Model | Any value (gateway auto-selects based on mode) |
-| API Key | Any value (not validated) |
+---
 
 ## Configuration
 
-Set the downstream LLM provider in `appsettings.json`:
-
 ```json
 {
+  "UseInMemoryDatabase": false,
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Port=5432;Database=developermemory;Username=developer;Password=devpassword"
+  },
   "AppSettings": {
     "FreeLlmApi": {
       "BaseUrl": "http://localhost:3001/v1",
@@ -93,16 +153,74 @@ Set the downstream LLM provider in `appsettings.json`:
 }
 ```
 
-Or use environment variables: `AppSettings__FreeLlmApi__BaseUrl`, `AppSettings__FreeLlmApi__ApiKey`, etc.
+Environment variables: `AppSettings__FreeLlmApi__BaseUrl`, `AppSettings__FreeLlmApi__ApiKey`, etc.
+
+---
+
+## API Endpoints
+
+### Memory Management (`/api/Memory`)
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/Memory` | Create a memory entry |
+| `GET` | `/api/Memory/{id}` | Get by ID |
+| `GET` | `/api/Memory` | Search or list (query, scope, projectId, tags) |
+| `PUT` | `/api/Memory/{id}` | Update a memory entry |
+| `DELETE` | `/api/Memory/{id}` | Soft-delete |
+| `POST` | `/api/Memory/{id}/supersede` | Supersede with replacement |
+| `POST` | `/api/Memory/expire` | Process expired entries |
+| `GET` | `/api/Memory/stats` | Statistics by scope and state |
+
+### Projects (`/api/Projects`)
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/Projects` | Create a project |
+| `GET` | `/api/Projects` | List all projects |
+| `GET` | `/api/Projects/{id}` | Get by ID |
+| `PUT` | `/api/Projects/{id}` | Update |
+| `DELETE` | `/api/Projects/{id}` | Delete |
+
+### OpenAI-Compatible Gateway (`/v1`)
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/v1/chat/completions` | Enriched chat completion |
+| `GET` | `/v1/models` | List models |
+| `GET` | `/v1/models/{modelId}` | Get model details |
+
+### Legacy Knowledge & Profiles (`/api`)
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/Knowledge` | Search knowledge documents |
+| `GET` | `/api/Knowledge/documents` | List all documents |
+| `POST` | `/api/Knowledge` | Create document |
+| `POST` | `/api/Knowledge/reindex` | Reload documents |
+| `GET` | `/api/Profiles` | List profiles |
+| `POST` | `/api/Profiles` | Load profile from file |
+
+---
+
+## Running Tests
+
+```bash
+dotnet test tests/DeveloperMemory.Infrastructure.Tests/
+```
+
+---
 
 ## Documentation
 
-- **[PROJECT_VISION.md](PROJECT_VISION.md)** — Mission, problem statement, core concepts, and long-term direction
-- **[CURRENT_STATUS.md](CURRENT_STATUS.md)** — Actual implementation inventory based on code audit
-- **[ROADMAP.md](ROADMAP.md)** — What's done, what's next, and future plans
-- **[CLAUDE.md](CLAUDE.md)** — Complete project reference: architecture, API docs, data models, configuration
-- **[AGENTS.md](AGENTS.md)** — AI agent coding guide: standards, extension patterns, gotchas
-- **[KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md)** — YAML frontmatter format for documents and profiles
+| Document | Purpose |
+|---|---|
+| [PROJECT_VISION.md](PROJECT_VISION.md) | Canonical vision, principles, and target architecture |
+| [CURRENT_STATUS.md](CURRENT_STATUS.md) | Verified implementation inventory |
+| [ROADMAP.md](ROADMAP.md) | Development roadmap |
+| [CLAUDE.md](CLAUDE.md) | Complete technical reference |
+| [AGENTS.md](AGENTS.md) | AI agent coding guide |
+| [KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md) | Knowledge and profile format reference |
+| [DOCUMENTATION.md](DOCUMENTATION.md) | Documentation index |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
+
+---
 
 ## License
 

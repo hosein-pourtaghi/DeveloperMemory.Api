@@ -8,6 +8,7 @@ using DeveloperMemory.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace DeveloperMemory.Infrastructure.DependencyInjection;
 
@@ -209,6 +210,42 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<IPromptIntelligenceAudit, InMemoryPromptAudit>();
             services.AddSingleton<IPromptQualityEvaluator, DeterministicPromptQualityEvaluator>();
             services.AddSingleton<PromptProcessingRecordRepository>();
+        }
+
+        // Phase 12: Prompt Intelligence Evaluation, Experimentation & Observability
+        var promptIntelligenceOptions = new Configuration.PromptIntelligenceOptions();
+        configuration.GetSection(Configuration.PromptIntelligenceOptions.SectionName).Bind(promptIntelligenceOptions);
+        services.Configure<Configuration.PromptIntelligenceOptions>(
+            configuration.GetSection(Configuration.PromptIntelligenceOptions.SectionName));
+
+        // Quality evaluation pipeline
+        services.AddScoped<HybridQualityEvaluationPipeline>();
+        services.AddScoped<IPromptCandidateSelector, PromptCandidateSelector>();
+
+        // LLM quality evaluator (optional)
+        if (promptIntelligenceOptions.LlmEvaluation.IsAvailable)
+        {
+            services.AddHttpClient("LlmEvaluation", client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(promptIntelligenceOptions.LlmEvaluation.TimeoutSeconds);
+            });
+            services.AddScoped<ILlmPromptQualityEvaluator, LlmPromptQualityEvaluator>();
+        }
+        else
+        {
+            services.AddSingleton<ILlmPromptQualityEvaluator>(sp => null!);
+        }
+
+        // Experiment service
+        services.AddScoped<IExperimentService, ExperimentService>();
+
+        // Metrics
+        services.AddSingleton<IPromptIntelligenceMetrics, InMemoryPromptMetrics>();
+
+        // Background history retention worker
+        if (promptIntelligenceOptions.HistoryRetention.Enabled)
+        {
+            services.AddHostedService<PromptHistoryRetentionWorker>();
         }
 
         return services;

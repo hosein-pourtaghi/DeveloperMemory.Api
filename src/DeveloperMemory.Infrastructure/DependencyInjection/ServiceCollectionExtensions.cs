@@ -154,6 +154,13 @@ public static class ServiceCollectionExtensions
             return deterministic;
         });
 
+        // Phase 9: Prompt Intelligence & Context Orchestration
+        services.AddScoped<IIntentAnalyzer, DeterministicIntentAnalyzer>();
+        services.AddScoped<IProjectContextProvider, ProjectContextProvider>();
+        services.AddScoped<IContextOrchestrator, ContextOrchestrator>();
+        services.AddScoped<PromptConstructionEngine>();
+        services.AddScoped<DeterministicPromptOptimizer>();
+
         return services;
     }
 }

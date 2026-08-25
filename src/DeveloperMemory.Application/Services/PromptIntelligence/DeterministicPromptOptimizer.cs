@@ -1,88 +1,184 @@
-using DeveloperMemory.Application.Contracts;
-using System.Text;
-using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 
 namespace DeveloperMemory.Application.Services.PromptIntelligence;
 
 /// <summary>
-/// Deterministic, provider-independent prompt optimizer.
-/// Removes duplicate instructions, normalizes whitespace, eliminates redundancy,
-/// and preserves semantic meaning.
-/// 
-/// Does NOT call external LLMs. This is a text-processing optimization only.
-/// 
-/// Future: LlmPromptOptimizer can provide richer semantic optimization.
+/// Deterministic prompt optimizer.
+/// Removes redundancy, normalizes whitespace, preserves critical constraints.
+///
+/// Does NOT:
+/// - Change user intent
+/// - Remove critical constraints
+/// - Invent requirements
+/// - Override instructions
+/// - Call external LLMs
 /// </summary>
-public partial class DeterministicPromptOptimizer : IPromptOptimizer
+public class DeterministicPromptOptimizer
 {
-    public string Optimize(string prompt)
+    private readonly ILogger<DeterministicPromptOptimizer> _logger;
+
+    public DeterministicPromptOptimizer(ILogger<DeterministicPromptOptimizer> logger)
     {
-        if (string.IsNullOrWhiteSpace(prompt))
-            return string.Empty;
-
-        var result = prompt;
-
-        // Step 1: Normalize line endings
-        result = result.Replace("\r\n", "\n").Replace("\r", "\n");
-
-        // Step 2: Remove duplicate consecutive blank lines (collapse to single)
-        result = DuplicateBlankLinesRegex().Replace(result, "\n\n");
-
-        // Step 3: Remove duplicate lines (same content appearing twice)
-        result = RemoveDuplicateLines(result);
-
-        // Step 4: Trim trailing whitespace from each line
-        result = TrailingWhitespaceRegex().Replace(result, "");
-
-        // Step 5: Trim leading/trailing whitespace from the whole prompt
-        result = result.Trim();
-
-        return result;
+        _logger = logger;
     }
 
     /// <summary>
-    /// Removes exact duplicate lines while preserving order and section structure.
-    /// Only removes lines that appear multiple times with the same content.
-    /// Section headers, markers, and the user request are never removed.
+    /// Optimizes a prompt for downstream consumption.
     /// </summary>
+    public PromptOptimizationResult Optimize(PromptConstructionResult input)
+    {
+        var original = input.ComposedPrompt;
+        var optimized = original;
+
+        // ── Step 1: Remove duplicate lines ──
+        optimized = RemoveDuplicateLines(optimized);
+
+        // ── Step 2: Normalize whitespace ──
+        optimized = NormalizeWhitespace(optimized);
+
+        // ── Step 3: Remove redundant section headers ──
+        optimized = RemoveRedundantHeaders(optimized);
+
+        // ── Step 4: Compress repeated instructions ──
+        optimized = CompressRepeatedInstructions(optimized);
+
+        // ── Step 5: Ensure section delimiters are clear ──
+        optimized = EnsureClearDelimiters(optimized);
+
+        var savedTokens = EstimateTokens(original) - EstimateTokens(optimized);
+        var changed = original != optimized;
+
+        if (changed)
+        {
+            _logger.LogDebug(
+                "Prompt optimized: saved ~{Tokens} tokens ({Original} → {Optimized} chars)",
+                savedTokens, original.Length, optimized.Length);
+        }
+
+        return new PromptOptimizationResult
+        {
+            OptimizedPrompt = optimized,
+            OriginalLength = original.Length,
+            OptimizedLength = optimized.Length,
+            EstimatedTokensSaved = Math.Max(0, savedTokens),
+            OptimizationApplied = changed,
+            Changes = changed ? ["deduplication", "whitespace", "compression"] : []
+        };
+    }
+
     private static string RemoveDuplicateLines(string text)
     {
         var lines = text.Split('\n');
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var result = new StringBuilder();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<string>();
 
         foreach (var line in lines)
         {
             var trimmed = line.Trim();
-
-            // Never remove section markers, headers, or blank lines
-            if (string.IsNullOrEmpty(trimmed) ||
-                trimmed.StartsWith("---") ||
-                trimmed.StartsWith("## ") ||
-                trimmed.StartsWith("[Task") ||
-                trimmed.StartsWith("User Request:") ||
-                trimmed.StartsWith("Goal:"))
+            if (string.IsNullOrEmpty(trimmed))
             {
-                result.AppendLine(line);
+                result.Add(line);
                 continue;
             }
 
-            // For content lines, check for exact duplicates
-            if (!seen.Add(trimmed))
+            // Don't deduplicate section headers or important markers
+            if (trimmed.StartsWith("---") || trimmed.StartsWith("[") || trimmed.StartsWith("SYSTEM"))
             {
-                // Duplicate line — skip it
+                result.Add(line);
                 continue;
             }
 
-            result.AppendLine(line);
+            if (seen.Add(trimmed))
+            {
+                result.Add(line);
+            }
         }
 
-        return result.ToString();
+        return string.Join('\n', result);
     }
 
-    [GeneratedRegex(@"\n{3,}")]
-    private static partial Regex DuplicateBlankLinesRegex();
+    private static string NormalizeWhitespace(string text)
+    {
+        // Replace multiple blank lines with double newline
+        var result = System.Text.RegularExpressions.Regex.Replace(text, @"\n{3,}", "\n\n");
+        return result.Trim();
+    }
 
-    [GeneratedRegex(@"[ \t]+$", RegexOptions.Multiline)]
-    private static partial Regex TrailingWhitespaceRegex();
+    private static string RemoveRedundantHeaders(string text)
+    {
+        // Remove duplicate section markers
+        var result = System.Text.RegularExpressions.Regex.Replace(
+            text, @"(--- .+ ---)\n\1", "$1");
+        return result;
+    }
+
+    private static string CompressRepeatedInstructions(string text)
+    {
+        // If the same instruction appears multiple times, keep only the first
+        var lines = text.Split('\n');
+        var instructionCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<string>();
+
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim().ToLowerInvariant();
+
+            // Only compress security/repeated instructions
+            if (trimmed.Contains("do not") || trimmed.Contains("treat") || trimmed.Contains("data only"))
+            {
+                if (instructionCounts.ContainsKey(trimmed))
+                {
+                    instructionCounts[trimmed]++;
+                    if (instructionCounts[trimmed] <= 2) // Allow up to 2 occurrences
+                    {
+                        result.Add(line);
+                    }
+                    continue;
+                }
+                instructionCounts[trimmed] = 1;
+            }
+
+            result.Add(line);
+        }
+
+        return string.Join('\n', result);
+    }
+
+    private static string EnsureClearDelimiters(string text)
+    {
+        // Ensure section delimiters are on their own lines
+        var result = System.Text.RegularExpressions.Regex.Replace(
+            text, @"([^\n])(--- )", "$1\n$2");
+        return result;
+    }
+
+    private static int EstimateTokens(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return 0;
+        return (int)Math.Ceiling(text.Length / 4.0);
+    }
+}
+
+/// <summary>
+/// Result of prompt optimization.
+/// </summary>
+public class PromptOptimizationResult
+{
+    /// <summary>The optimized prompt text.</summary>
+    public string OptimizedPrompt { get; set; } = string.Empty;
+
+    /// <summary>Original character count.</summary>
+    public int OriginalLength { get; set; }
+
+    /// <summary>Optimized character count.</summary>
+    public int OptimizedLength { get; set; }
+
+    /// <summary>Estimated tokens saved.</summary>
+    public int EstimatedTokensSaved { get; set; }
+
+    /// <summary>Whether optimization was applied.</summary>
+    public bool OptimizationApplied { get; set; }
+
+    /// <summary>What changes were made.</summary>
+    public List<string> Changes { get; set; } = [];
 }

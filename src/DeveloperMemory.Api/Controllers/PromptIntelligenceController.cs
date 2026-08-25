@@ -1,5 +1,6 @@
 using DeveloperMemory.Application.Contracts;
 using DeveloperMemory.Application.Services.PromptIntelligence;
+using DeveloperMemory.Domain.Entities;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DeveloperMemory.Api.Controllers;
@@ -232,11 +233,267 @@ public class PromptIntelligenceController : ControllerBase
     }
 }
 
-/// <summary>
-/// Request for prompt analysis.
-/// </summary>
-public class PromptAnalyzeRequest
-{
+    /// <summary>
+    /// Get processing history with optional filters.
+    /// </summary>
+    [HttpGet("history")]
+    public async Task<ActionResult<object>> GetHistory(
+        [FromServices] PromptProcessingRecordRepository historyRepo,
+        [FromQuery] Guid? profileId,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        [FromQuery] string? optimizationMode,
+        [FromQuery] string? validationStatus,
+        [FromQuery] bool? fallbackUsed,
+        [FromQuery] int maxResults = 50,
+        CancellationToken ct = default)
+    {
+        var records = await historyRepo.QueryAsync(
+            profileId, from, to, optimizationMode, validationStatus,
+            fallbackUsed, maxResults, ct);
+
+        return Ok(records.Select(r => new
+        {
+            r.Id,
+            r.CorrelationId,
+            r.CreatedAt,
+            r.ProfileId,
+            r.ProfileVersion,
+            r.Intent,
+            r.TaskType,
+            r.OptimizationMode,
+            r.Optimizer,
+            r.WasLlmUsed,
+            r.WasFallbackUsed,
+            r.TokenBudget,
+            r.EstimatedInputTokens,
+            r.EstimatedOutputTokens,
+            r.QualityScore,
+            r.ValidationStatus,
+            r.ProcessingDurationMs,
+            r.ExperimentId,
+            r.VariantId,
+            r.MemoryCount,
+            r.ConflictsDetected,
+            r.QualityGatePassed
+        }));
+    }
+
+    /// <summary>
+    /// Get a specific processing record by ID.
+    /// </summary>
+    [HttpGet("history/{id:guid}")]
+    public async Task<ActionResult<object>> GetHistoryRecord(
+        Guid id,
+        [FromServices] PromptProcessingRecordRepository historyRepo,
+        CancellationToken ct)
+    {
+        var record = await historyRepo.GetByIdAsync(id, ct);
+        if (record == null) return NotFound();
+
+        return Ok(new
+        {
+            record.Id,
+            record.CorrelationId,
+            record.CreatedAt,
+            record.ProfileId,
+            record.ProfileVersion,
+            record.Intent,
+            record.TaskType,
+            record.OptimizationMode,
+            record.Optimizer,
+            record.OptimizerVersion,
+            record.Model,
+            record.WasLlmUsed,
+            record.WasFallbackUsed,
+            record.TokenBudget,
+            record.EstimatedInputTokens,
+            record.EstimatedOutputTokens,
+            record.QualityScore,
+            record.ValidationStatus,
+            record.ProcessingDurationMs,
+            record.ExperimentId,
+            record.VariantId,
+            record.MemoryIdsUsed,
+            record.ProjectId,
+            record.WorkspaceId,
+            record.MemoryCount,
+            record.ConflictsDetected,
+            record.QualityGatePassed,
+            record.QualityGateFailureReason
+        });
+    }
+
+    /// <summary>
+    /// Get version history for a profile.
+    /// </summary>
+    [HttpGet("profiles/{name}/versions")]
+    public async Task<ActionResult<object>> GetProfileVersions(
+        string name,
+        IPromptProfileProvider profileProvider,
+        CancellationToken ct)
+    {
+        var profile = await profileProvider.GetByNameAsync(name, ct);
+        if (profile == null) return NotFound();
+
+        // If the provider is a PromptProfileRepository, we can get versions
+        if (profileProvider is Persistence.PromptProfileRepository repo)
+        {
+            var versions = await repo.GetVersionsAsync(profile.Id, ct);
+            return Ok(versions.Select(v => new
+            {
+                v.Id,
+                v.Version,
+                v.IsActive,
+                v.CreatedAt,
+                v.CreatedBy,
+                v.ChangeDescription,
+                configuration = v.GetConfiguration()
+            }));
+        }
+
+        // Fallback: return just the current version
+        return Ok(new[] { new
+        {
+            Id = profile.Id,
+            profile.Version,
+            IsActive = true,
+            profile.CreatedAt,
+            CreatedBy = "system",
+            ChangeDescription = (string?)null,
+            configuration = profile.GetConfiguration()
+        } });
+    }
+
+    /// <summary>
+    /// Create a new prompt profile.
+    /// </summary>
+    [HttpPost("profiles")]
+    public async Task<ActionResult<object>> CreateProfile(
+        [FromBody] CreateProfileRequest request,
+        IPromptProfileProvider profileProvider,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return BadRequest(new { error = new { message = "Name is required.", code = "validation_error" } });
+        }
+
+        var existing = await profileProvider.GetByNameAsync(request.Name, ct);
+        if (existing != null)
+        {
+            return Conflict(new { error = new { message = $"Profile '{request.Name}' already exists.", code = "conflict" } });
+        }
+
+        var profile = new Domain.Entities.PromptProfile
+        {
+            Name = request.Name,
+            Description = request.Description ?? string.Empty,
+            Enabled = request.Enabled
+        };
+
+        if (request.Configuration != null)
+        {
+            profile.SetConfiguration(request.Configuration);
+        }
+
+        var created = await profileProvider.CreateAsync(profile, ct);
+
+        return CreatedAtAction(nameof(GetProfile), new { name = created.Name }, new
+        {
+            created.Id,
+            created.Name,
+            created.Description,
+            created.Version,
+            created.Enabled,
+            configuration = created.GetConfiguration()
+        });
+    }
+
+    /// <summary>
+    /// Rollback a profile to a specific version.
+    /// </summary>
+    [HttpPost("profiles/{name}/rollback")]
+    public async Task<ActionResult<object>> RollbackProfile(
+        string name,
+        [FromBody] RollbackRequest request,
+        IPromptProfileProvider profileProvider,
+        CancellationToken ct)
+    {
+        if (profileProvider is not Persistence.PromptProfileRepository repo)
+        {
+            return BadRequest(new { error = new { message = "Profile rollback not supported in current configuration.", code = "unsupported" } });
+        }
+
+        var profile = await repo.GetByNameAsync(name, ct);
+        if (profile == null) return NotFound();
+
+        var result = await repo.RollbackAsync(profile.Id, request.TargetVersion, ct);
+        if (result == null)
+        {
+            return NotFound(new { error = new { message = $"Version {request.TargetVersion} not found.", code = "version_not_found" } });
+        }
+
+        return Ok(new
+        {
+            result.Id,
+            result.Name,
+            result.Version,
+            result.Description,
+            result.Enabled,
+            configuration = result.GetConfiguration()
+        });
+    }
+
+    /// <summary>
+    /// Get audit trail for a correlation ID.
+    /// </summary>
+    [HttpGet("audit/{correlationId}")]
+    public async Task<ActionResult<object>> GetAuditTrail(
+        string correlationId,
+        IPromptIntelligenceAudit audit,
+        CancellationToken ct)
+    {
+        var events = await audit.GetEventsByCorrelationAsync(correlationId, ct);
+        return Ok(events.Select(e => new
+        {
+            e.Id,
+            e.CorrelationId,
+            e.CreatedAt,
+            EventType = e.EventType.ToString(),
+            e.ProcessingRecordId,
+            e.ProfileId,
+            e.Details
+        }));
+    }
+
+    /// <summary>
+    /// Get recent audit events.
+    /// </summary>
+    [HttpGet("audit")]
+    public async Task<ActionResult<object>> GetRecentAuditEvents(
+        IPromptIntelligenceAudit audit,
+        [FromQuery] int count = 50,
+        CancellationToken ct = default)
+    {
+        var events = await audit.GetRecentEventsAsync(count, ct);
+        return Ok(events.Select(e => new
+        {
+            e.Id,
+            e.CorrelationId,
+            e.CreatedAt,
+            EventType = e.EventType.ToString(),
+            e.ProcessingRecordId,
+            e.ProfileId,
+            e.Details
+        }));
+    }
+
+    /// <summary>
+    /// Request for prompt analysis.
+    /// </summary>
+    public class PromptAnalyzeRequest
+    {
     /// <summary>The user input to analyze.</summary>
     public string Input { get; set; } = string.Empty;
 
@@ -278,4 +535,31 @@ public class PromptProcessRequest
 
     /// <summary>Maximum tokens for context.</summary>
     public int TokenBudget { get; set; } = 4000;
+}
+
+/// <summary>
+/// Request to create a new prompt profile.
+/// </summary>
+public class CreateProfileRequest
+{
+    /// <summary>Profile name (must be unique).</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Profile description.</summary>
+    public string? Description { get; set; }
+
+    /// <summary>Whether the profile is enabled.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Profile configuration.</summary>
+    public Domain.Entities.PromptProfileConfiguration? Configuration { get; set; }
+}
+
+/// <summary>
+/// Request to rollback a profile to a specific version.
+/// </summary>
+public class RollbackRequest
+{
+    /// <summary>The target version number to rollback to.</summary>
+    public int TargetVersion { get; set; }
 }

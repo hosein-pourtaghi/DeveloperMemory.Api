@@ -192,6 +192,25 @@ public static class ServiceCollectionExtensions
         // Prompt profiles
         services.AddSingleton<IPromptProfileProvider, PromptProfileProvider>();
 
+        // Phase 11: Persistent Prompt Intelligence
+        var promptIntelligencePersistence = configuration.GetValue<bool>("PromptIntelligence:PersistenceEnabled", true);
+
+        if (promptIntelligencePersistence && !useInMemory)
+        {
+            services.AddScoped<IPromptProfileProvider, PromptProfileRepository>();
+            services.AddScoped<IPromptIntelligenceAudit, PromptIntelligenceAudit>();
+            services.AddScoped<IPromptHistoryRetentionService, PromptHistoryRetentionService>();
+            services.AddScoped<PromptProcessingRecordRepository>();
+            services.AddScoped<IPromptQualityEvaluator, DeterministicPromptQualityEvaluator>();
+        }
+        else
+        {
+            // Fallback: in-memory audit for testing
+            services.AddSingleton<IPromptIntelligenceAudit, InMemoryPromptAudit>();
+            services.AddSingleton<IPromptQualityEvaluator, DeterministicPromptQualityEvaluator>();
+            services.AddSingleton<PromptProcessingRecordRepository>();
+        }
+
         return services;
     }
 }

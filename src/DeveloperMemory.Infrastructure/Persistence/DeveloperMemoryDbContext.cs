@@ -7,6 +7,7 @@ public class DeveloperMemoryDbContext : DbContext
 {
     public DbSet<MemoryEntry> MemoryEntries => Set<MemoryEntry>();
     public DbSet<Project> Projects => Set<Project>();
+    public DbSet<VectorEntry> VectorEntries => Set<VectorEntry>();
 
     public DeveloperMemoryDbContext(DbContextOptions<DeveloperMemoryDbContext> options)
         : base(options)

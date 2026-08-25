@@ -16,6 +16,7 @@ public class MemoryController : ControllerBase
     private readonly IMemoryRetrievalService _retrievalService;
     private readonly IMemoryIngestionService _ingestionService;
     private readonly IMemoryRanker _memoryRanker;
+    private readonly IEmbeddingService _embeddingService;
     private readonly ILogger<MemoryController> _logger;
 
     public MemoryController(
@@ -23,12 +24,14 @@ public class MemoryController : ControllerBase
         IMemoryRetrievalService retrievalService,
         IMemoryIngestionService ingestionService,
         IMemoryRanker memoryRanker,
+        IEmbeddingService embeddingService,
         ILogger<MemoryController> logger)
     {
         _memoryService = memoryService;
         _retrievalService = retrievalService;
         _ingestionService = ingestionService;
         _memoryRanker = memoryRanker;
+        _embeddingService = embeddingService;
         _logger = logger;
     }
 
@@ -51,6 +54,21 @@ public class MemoryController : ControllerBase
         try
         {
             var memory = await _memoryService.CreateAsync(request, ct);
+
+            // Generate embedding asynchronously (fire-and-forget for now)
+            if (_embeddingService.IsSemanticAvailable)
+            {
+                try
+                {
+                    await _embeddingService.GenerateAndStoreAsync(
+                        memory.Id, $"{request.Title} {request.Content}", ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Embedding generation failed for new memory {Id}", memory.Id);
+                }
+            }
+
             _logger.LogInformation("Memory created: {Id} - {Title}", memory.Id, memory.Title);
             return CreatedAtAction(nameof(GetById), new { id = memory.Id }, memory);
         }
@@ -62,7 +80,6 @@ public class MemoryController : ControllerBase
 
     /// <summary>
     /// Ingest a memory through the intelligent ingestion pipeline.
-    /// Handles duplicate detection, conflict detection, and lifecycle decisions.
     /// </summary>
     [HttpPost("ingest")]
     public async Task<ActionResult<MemoryIngestionResult>> Ingest([FromBody] MemoryIngestionRequest request, CancellationToken ct)
@@ -73,6 +90,20 @@ public class MemoryController : ControllerBase
         }
 
         var result = await _ingestionService.IngestAsync(request, ct);
+
+        // Generate embedding for new memories
+        if (result.WasPersisted && result.Memory != null && _embeddingService.IsSemanticAvailable)
+        {
+            try
+            {
+                await _embeddingService.GenerateAndStoreAsync(
+                    result.Memory.Id, $"{result.Memory.Title} {result.Memory.Content}", ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Embedding generation failed for ingested memory {Id}", result.Memory.Id);
+            }
+        }
 
         return result.Outcome switch
         {
@@ -120,7 +151,6 @@ public class MemoryController : ControllerBase
             return Ok(entries);
         }
 
-        // Default: return all scopes
         var allEntries = new List<MemoryDto>();
         foreach (MemoryScope s in Enum.GetValues<MemoryScope>())
         {
@@ -130,7 +160,7 @@ public class MemoryController : ControllerBase
     }
 
     /// <summary>
-    /// Structured memory query with type/status filters, ranking, and relevance scoring.
+    /// Structured memory query with retrieval mode selection (Lexical/Semantic/Hybrid/Auto).
     /// </summary>
     [HttpPost("query")]
     public async Task<ActionResult<QueryMemoryResult>> Query(
@@ -144,22 +174,18 @@ public class MemoryController : ControllerBase
 
         var maxResults = Math.Clamp(request.MaxResults, 1, 100);
 
-        // Get candidates via retrieval service
         var retrievalRequest = new RetrievalRequest
         {
             UserId = request.UserId ?? string.Empty,
             ProjectId = request.ProjectId,
             WorkspaceId = request.WorkspaceId,
             Query = request.Query,
-            MaximumResults = maxResults * 3, // Get more candidates for ranking
+            MaximumResults = maxResults * 3,
             ContextTokenBudget = 100000
         };
 
         var retrievalResult = await _retrievalService.RetrieveAsync(retrievalRequest, ct);
 
-        // Convert RetrievedMemory back to MemoryEntry-like data for ranking
-        // In a real implementation, we'd query the repository directly
-        // For now, use the retrieval result's memories
         var rankedDtos = retrievalResult.Memories
             .Where(m => request.States == null || request.States.Contains(m.State))
             .Where(m => request.MemoryTypes == null || request.MemoryTypes.Contains(m.MemoryType))
@@ -174,12 +200,12 @@ public class MemoryController : ControllerBase
                     Content = m.Content,
                     Scope = m.Scope,
                     State = m.State,
-                    MemoryType = MemoryType.Other, // Default since RetrievedMemory doesn't carry MemoryType
+                    MemoryType = MemoryType.Other,
                     Classification = m.Classification,
                     ProjectId = m.ProjectId,
                     Source = m.Source,
                     Tags = m.Tags,
-                    CreatedAt = m.UpdatedAt, // Best approximation
+                    CreatedAt = m.UpdatedAt,
                     UpdatedAt = m.UpdatedAt,
                     Importance = m.Importance
                 },
@@ -197,6 +223,33 @@ public class MemoryController : ControllerBase
     }
 
     /// <summary>
+    /// Rebuild the embedding for a specific memory.
+    /// </summary>
+    [HttpPost("{id:guid}/embedding/rebuild")]
+    public async Task<ActionResult<object>> RebuildEmbedding(Guid id, CancellationToken ct)
+    {
+        var memory = await _memoryService.GetByIdAsync(id, ct);
+        if (memory == null) return NotFound();
+
+        if (!_embeddingService.IsSemanticAvailable)
+        {
+            return BadRequest(new { error = new { message = "Semantic provider is not available.", code = "semantic_unavailable" } });
+        }
+
+        var text = $"{memory.Title} {memory.Content}";
+        var result = await _embeddingService.RebuildAsync(id, text, ct);
+
+        return Ok(new
+        {
+            memoryId = id,
+            success = result.Success,
+            errorMessage = result.ErrorMessage,
+            dimensions = result.Embedding?.Dimensions ?? 0,
+            durationMs = result.GenerationDurationMs
+        });
+    }
+
+    /// <summary>
     /// Update a memory entry.
     /// </summary>
     [HttpPut("{id:guid}")]
@@ -205,6 +258,21 @@ public class MemoryController : ControllerBase
         try
         {
             var memory = await _memoryService.UpdateAsync(id, request, ct);
+
+            // Rebuild embedding if content changed
+            if (request.Content != null && _embeddingService.IsSemanticAvailable)
+            {
+                try
+                {
+                    await _embeddingService.RebuildAsync(
+                        id, $"{memory.Title} {request.Content}", ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Embedding rebuild failed for updated memory {Id}", id);
+                }
+            }
+
             return Ok(memory);
         }
         catch (MemoryNotFoundException)
@@ -225,6 +293,20 @@ public class MemoryController : ControllerBase
     {
         var deleted = await _memoryService.DeleteAsync(id, ct);
         if (!deleted) return NotFound();
+
+        // Delete embedding
+        if (_embeddingService.IsSemanticAvailable)
+        {
+            try
+            {
+                await _embeddingService.DeleteAsync(id, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Embedding deletion failed for memory {Id}", id);
+            }
+        }
+
         return NoContent();
     }
 
@@ -237,6 +319,21 @@ public class MemoryController : ControllerBase
         try
         {
             var replacement = await _memoryService.SupersedeAsync(id, replacementRequest, ct);
+
+            // Generate embedding for replacement
+            if (_embeddingService.IsSemanticAvailable)
+            {
+                try
+                {
+                    await _embeddingService.GenerateAndStoreAsync(
+                        replacement.Id, $"{replacement.Title} {replacement.Content}", ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Embedding generation failed for superseding memory {Id}", replacement.Id);
+                }
+            }
+
             _logger.LogInformation("Memory {Id} superseded by {ReplacementId}", id, replacement.Id);
             return Ok(replacement);
         }
@@ -271,9 +368,43 @@ public class MemoryController : ControllerBase
     }
 
     /// <summary>
+    /// Analyze input and return memory candidates without persisting them.
+    /// Useful for testing, debugging, and future review UI.
+    /// </summary>
+    [HttpPost("analyze")]
+    public async Task<ActionResult<object>> Analyze(
+        [FromBody] MemoryExtractionRequest request,
+        [FromQuery] string? mode,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Content))
+        {
+            return BadRequest(new { error = new { message = "Content is required.", code = "validation_error" } });
+        }
+
+        var extractionMode = ExtractionMode.Auto;
+        if (!string.IsNullOrEmpty(mode) && Enum.TryParse<ExtractionMode>(mode, true, out var parsed))
+        {
+            extractionMode = parsed;
+        }
+
+        var orchestrator = HttpContext.RequestServices.GetRequiredService<IExtractionOrchestrator>();
+        var result = await orchestrator.ExtractAsync(request, extractionMode, ct);
+
+        return Ok(new
+        {
+            candidates = result.Candidates,
+            strategyUsed = result.StrategyUsed,
+            llmUsed = result.LlmUsed,
+            deterministicCount = result.DeterministicCount,
+            llmCount = result.LlmCount,
+            finalCount = result.FinalCount,
+            warnings = result.Warnings
+        });
+    }
+
+    /// <summary>
     /// Privacy-aware memory retrieval with ranking and context budgeting.
-    /// Returns memories eligible for the given context, ranked by relevance
-    /// and constrained by the token budget.
     /// </summary>
     [HttpPost("retrieve")]
     public async Task<ActionResult<RetrievedMemoriesResult>> Retrieve(
@@ -285,7 +416,6 @@ public class MemoryController : ControllerBase
             return BadRequest(new { error = new { message = "Query is required.", code = "validation_error" } });
         }
 
-        // Clamp limits to prevent abuse
         const int maxAllowedResults = 100;
         const int maxAllowedBudget = 100000;
         var effectiveMaxResults = Math.Clamp(request.MaximumResults, 1, maxAllowedResults);

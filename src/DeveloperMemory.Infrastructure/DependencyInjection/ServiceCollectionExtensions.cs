@@ -3,6 +3,7 @@ using DeveloperMemory.Application.Services;
 using DeveloperMemory.Application.Services.PromptIntelligence;
 using DeveloperMemory.Application.Services.Retrieval;
 using DeveloperMemory.Domain.Interfaces;
+using DeveloperMemory.Infrastructure.Configuration;
 using DeveloperMemory.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -47,7 +48,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IProjectService, ProjectService>();
 
         // Phase 3: Retrieval pipeline
-        services.AddScoped<IMemoryRetrievalProvider, KeywordRetrievalProvider>();
+        services.AddScoped<KeywordRetrievalProvider>();
+        services.AddScoped<IMemoryRetrievalProvider>(sp => sp.GetRequiredService<KeywordRetrievalProvider>());
         services.AddScoped<IRetrievalRanker, RelevanceRanker>();
         services.AddScoped<IContextBudgeter, CharacterContextBudgeter>();
         services.AddScoped<IMemoryRetrievalService, MemoryRetrievalService>();
@@ -65,6 +67,92 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMemoryConflictDetector, MemoryConflictDetector>();
         services.AddScoped<IMemoryRanker, MemoryRanker>();
         services.AddScoped<IMemoryExtractionStrategy, DeterministicExtractionStrategy>();
+
+        // Phase 6 & 7: Semantic Memory Layer
+        // Configuration-based provider selection
+        var embeddingOptions = new EmbeddingOptions();
+        configuration.GetSection(EmbeddingOptions.SectionName).Bind(embeddingOptions);
+        services.Configure<EmbeddingOptions>(configuration.GetSection(EmbeddingOptions.SectionName));
+
+        // Embedding provider — in-memory for testing, OpenAI-compatible for production
+        if (embeddingOptions.Enabled && !string.IsNullOrEmpty(embeddingOptions.BaseUrl))
+        {
+            services.AddHttpClient<IEmbeddingProvider, Persistence.OpenAICompatibleEmbeddingProvider>(client =>
+            {
+                client.BaseAddress = new Uri(embeddingOptions.BaseUrl);
+                client.Timeout = TimeSpan.FromSeconds(embeddingOptions.TimeoutSeconds);
+            });
+        }
+        else
+        {
+            services.AddSingleton<IEmbeddingProvider, InMemoryEmbeddingProvider>();
+        }
+
+        // Vector store — in-memory for testing, PostgreSQL/pgvector for production
+        if (!useInMemory && embeddingOptions.Enabled)
+        {
+            services.AddScoped<IVectorStore, Persistence.PostgresVectorStore>();
+        }
+        else
+        {
+            services.AddSingleton<IVectorStore, InMemoryVectorStore>();
+        }
+
+        // Embedding services
+        services.AddScoped<IEmbeddingService, EmbeddingService>();
+        services.AddScoped<IEmbeddingRebuildService, EmbeddingRebuildService>();
+
+        // Embedding cache
+        if (embeddingOptions.CacheEnabled)
+        {
+            services.AddSingleton<IEmbeddingCache, InMemoryEmbeddingCache>();
+        }
+
+        // Semantic retrieval provider
+        services.AddScoped<SemanticRetrievalProvider>();
+        services.AddScoped<HybridRetrievalProvider>();
+
+        // Phase 8: LLM-Assisted Memory Intelligence
+        var memoryIntelligenceOptions = new MemoryIntelligenceOptions();
+        configuration.GetSection(MemoryIntelligenceOptions.SectionName).Bind(memoryIntelligenceOptions);
+        services.Configure<MemoryIntelligenceOptions>(configuration.GetSection(MemoryIntelligenceOptions.SectionName));
+
+        // Memory policy engine
+        services.AddScoped<IMemoryPolicy, MemoryPolicyEngine>();
+
+        // Deterministic extraction (always available)
+        services.AddScoped<DeterministicExtractionStrategy>();
+
+        // LLM extraction (optional, requires configuration)
+        if (memoryIntelligenceOptions.IsAvailable)
+        {
+            services.AddHttpClient("MemoryExtraction", client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(memoryIntelligenceOptions.ExtractionTimeoutSeconds);
+            });
+            services.AddScoped<LlmMemoryExtractionStrategy>();
+        }
+        else
+        {
+            services.AddSingleton<LlmMemoryExtractionStrategy>(sp => null!);
+        }
+
+        // Extraction orchestrator
+        services.AddScoped<IExtractionOrchestrator, ExtractionOrchestrator>();
+
+        // LLM conflict detection (wraps deterministic)
+        services.AddScoped<IMemoryConflictDetector>(sp =>
+        {
+            var deterministic = sp.GetRequiredService<MemoryConflictDetector>();
+            if (memoryIntelligenceOptions.IsAvailable)
+            {
+                var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+                var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<MemoryIntelligenceOptions>>();
+                var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<LlmConflictDetector>>();
+                return new LlmConflictDetector(deterministic, httpClientFactory, options, logger);
+            }
+            return deterministic;
+        });
 
         return services;
     }

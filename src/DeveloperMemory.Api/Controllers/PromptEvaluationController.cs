@@ -6,8 +6,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace DeveloperMemory.Api.Controllers;
 
 /// <summary>
-/// Phase 12: Prompt Intelligence Evaluation, Experimentation & Observability.
-/// Provides quality evaluation, comparison, metrics, and experiment management.
+/// Phase 12/13: Prompt Intelligence Evaluation, Experimentation & Observability.
+/// Provides quality evaluation, comparison, metrics, experiment management, analytics, and statistics.
 /// </summary>
 [ApiController]
 [Route("api/prompt")]
@@ -16,6 +16,8 @@ public class PromptEvaluationController : ControllerBase
     private readonly HybridQualityEvaluationPipeline _evaluationPipeline;
     private readonly IPromptCandidateSelector _candidateSelector;
     private readonly IExperimentService _experimentService;
+    private readonly IExperimentAnalyticsService _analyticsService;
+    private readonly IExperimentStatisticsAnalyzer _statisticsAnalyzer;
     private readonly IPromptIntelligenceMetrics _metrics;
     private readonly IPromptQualityEvaluator _deterministicEvaluator;
     private readonly ILogger<PromptEvaluationController> _logger;
@@ -24,6 +26,8 @@ public class PromptEvaluationController : ControllerBase
         HybridQualityEvaluationPipeline evaluationPipeline,
         IPromptCandidateSelector candidateSelector,
         IExperimentService experimentService,
+        IExperimentAnalyticsService analyticsService,
+        IExperimentStatisticsAnalyzer statisticsAnalyzer,
         IPromptIntelligenceMetrics metrics,
         IPromptQualityEvaluator deterministicEvaluator,
         ILogger<PromptEvaluationController> logger)
@@ -31,6 +35,8 @@ public class PromptEvaluationController : ControllerBase
         _evaluationPipeline = evaluationPipeline;
         _candidateSelector = candidateSelector;
         _experimentService = experimentService;
+        _analyticsService = analyticsService;
+        _statisticsAnalyzer = statisticsAnalyzer;
         _metrics = metrics;
         _deterministicEvaluator = deterministicEvaluator;
         _logger = logger;
@@ -458,6 +464,128 @@ public class PromptEvaluationController : ControllerBase
             })
         });
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // PHASE 13: EXPERIMENT ANALYTICS & STATISTICS
+    // ═══════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Get aggregate analytics for an experiment.
+    /// </summary>
+    [HttpGet("experiments/{id:guid}/analysis")]
+    public async Task<ActionResult<object>> GetExperimentAnalysis(
+        Guid id,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        CancellationToken ct)
+    {
+        var analytics = await _analyticsService.GetExperimentAnalyticsAsync(id, from, to, ct);
+        var variantAnalytics = await _analyticsService.GetVariantAnalyticsAsync(id, from, to, ct);
+
+        return Ok(new
+        {
+            analytics.ExperimentId,
+            analytics.TotalResults,
+            analytics.SuccessCount,
+            analytics.FailureCount,
+            analytics.FallbackRate,
+            analytics.LlmUsageRate,
+            analytics.QualityGatePassRate,
+            analytics.AverageQualityScore,
+            analytics.AverageInputTokens,
+            analytics.AverageOutputTokens,
+            analytics.AverageProcessingLatencyMs,
+            analytics.From,
+            analytics.To,
+            variants = variantAnalytics.Select(v => new
+            {
+                v.VariantId,
+                v.VariantName,
+                v.ResultCount,
+                v.AverageQualityScore,
+                v.FallbackRate,
+                v.LlmUsageRate,
+                v.QualityGatePassRate,
+                v.AverageInputTokens,
+                v.AverageOutputTokens,
+                v.AverageProcessingLatencyMs
+            })
+        });
+    }
+
+    /// <summary>
+    /// Compare statistical significance between two experiment variants.
+    /// </summary>
+    [HttpPost("experiments/{id:guid}/compare-variants")]
+    public async Task<ActionResult<object>> CompareVariants(
+        Guid id,
+        [FromBody] CompareVariantsRequest request,
+        CancellationToken ct)
+    {
+        if (request.VariantAId == Guid.Empty || request.VariantBId == Guid.Empty)
+        {
+            return BadRequest(new { error = new { message = "Both variantAId and variantBId are required.", code = "validation_error" } });
+        }
+
+        var resultsA = await _experimentService.GetResultsAsync(id, request.VariantAId, ct);
+        var resultsB = await _experimentService.GetResultsAsync(id, request.VariantBId, ct);
+
+        var scoresA = resultsA.Where(r => r.QualityScore.HasValue)
+            .Select(r => r.QualityScore!.Value).ToList();
+        var scoresB = resultsB.Where(r => r.QualityScore.HasValue)
+            .Select(r => r.QualityScore!.Value).ToList();
+
+        var comparison = _statisticsAnalyzer.CompareVariants(scoresA, scoresB);
+
+        return Ok(new
+        {
+            comparison.SampleCountA,
+            comparison.SampleCountB,
+            comparison.MeanA,
+            comparison.MeanB,
+            comparison.VarianceA,
+            comparison.VarianceB,
+            comparison.StandardDeviationA,
+            comparison.StandardDeviationB,
+            comparison.MeanDifference,
+            Significance = comparison.Significance.ToString(),
+            comparison.PValue,
+            comparison.ConfidenceIntervalLower,
+            comparison.ConfidenceIntervalUpper,
+            comparison.Summary
+        });
+    }
+
+    /// <summary>
+    /// Resume a paused experiment (moves to Running).
+    /// </summary>
+    [HttpPost("experiments/{id:guid}/resume")]
+    public async Task<ActionResult<object>> ResumeExperiment(Guid id, CancellationToken ct)
+    {
+        // Resume = move from Paused to Running
+        var experiment = await _experimentService.GetExperimentAsync(id, ct);
+        if (experiment == null) return NotFound();
+
+        if (experiment.Status != ExperimentStatus.Paused)
+        {
+            return BadRequest(new { error = new { message = $"Cannot resume experiment in {experiment.Status} state.", code = "invalid_transition" } });
+        }
+
+        var result = await _experimentService.StartExperimentAsync(id, ct);
+        if (!result) return BadRequest(new { error = new { message = "Failed to resume experiment.", code = "resume_failed" } });
+
+        return Ok(new { id, status = "Running", resumedAt = DateTime.UtcNow });
+    }
+}
+
+/// <summary>
+/// Request to compare two variants statistically.
+/// </summary>
+public class CompareVariantsRequest
+{
+    public Guid VariantAId { get; set; }
+    public Guid VariantBId { get; set; }
+    public double SignificanceLevel { get; set; } = 0.05;
 }
 
 /// <summary>

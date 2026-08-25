@@ -40,6 +40,12 @@ public class PromptIntelligenceOptions
 
     /// <summary>LLM quality evaluation configuration.</summary>
     public LlmEvaluationConfig LlmEvaluation { get; set; } = new();
+
+    /// <summary>Phase 13: Experimentation configuration.</summary>
+    public ExperimentationConfig Experimentation { get; set; } = new();
+
+    /// <summary>Phase 13: Observability configuration.</summary>
+    public ObservabilityConfig Observability { get; set; } = new();
 }
 
 /// <summary>
@@ -79,4 +85,34 @@ public class LlmEvaluationConfig
 
     /// <summary>Whether the LLM evaluation provider is available.</summary>
     public bool IsAvailable => Enabled && !string.IsNullOrEmpty(Provider) && !string.IsNullOrEmpty(Model);
+}
+
+/// <summary>
+/// Phase 13: Configuration for experiment features.
+/// </summary>
+public class ExperimentationConfig
+{
+    /// <summary>Whether experimentation is enabled.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Whether deterministic assignment is enabled.</summary>
+    public bool AssignmentEnabled { get; set; } = true;
+
+    /// <summary>Whether result recording is enabled.</summary>
+    public bool ResultRecordingEnabled { get; set; } = true;
+}
+
+/// <summary>
+/// Phase 13: Configuration for observability features.
+/// </summary>
+public class ObservabilityConfig
+{
+    /// <summary>Whether observability is enabled.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Observability provider: InMemory or OpenTelemetry.</summary>
+    public string Provider { get; set; } = "InMemory";
+
+    /// <summary>Whether OpenTelemetry metrics are enabled.</summary>
+    public bool EnableOpenTelemetry { get; set; } = false;
 }

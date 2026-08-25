@@ -65,6 +65,10 @@ public class OpenAIChatCompletionRequest
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ProfileId { get; set; }
 
+    [JsonPropertyName("workspace_id")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? WorkspaceId { get; set; }
+
     /// <summary>
     /// Catch any additional properties from the client that we don't explicitly model.
     /// This allows forwarding unknown fields to the downstream provider without discarding them.

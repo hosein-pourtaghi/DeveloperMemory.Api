@@ -19,11 +19,18 @@ public class MemoryEntryConfiguration : IEntityTypeConfiguration<MemoryEntry>
         builder.Property(e => e.Content)
             .IsRequired();
 
+        builder.Property(e => e.NormalizedContent)
+            .HasMaxLength(2000);
+
         builder.Property(e => e.Scope)
             .HasConversion<string>()
             .HasMaxLength(50);
 
         builder.Property(e => e.State)
+            .HasConversion<string>()
+            .HasMaxLength(50);
+
+        builder.Property(e => e.MemoryType)
             .HasConversion<string>()
             .HasMaxLength(50);
 
@@ -37,14 +44,33 @@ public class MemoryEntryConfiguration : IEntityTypeConfiguration<MemoryEntry>
         builder.Property(e => e.Importance)
             .HasPrecision(3, 2);
 
+        builder.Property(e => e.Confidence)
+            .HasPrecision(3, 2);
+
+        builder.Property(e => e.AccessCount)
+            .HasDefaultValue(0);
+
+        builder.Property(e => e.Version)
+            .HasDefaultValue(1);
+
+        // Indexes for common query patterns
         builder.HasIndex(e => e.Scope);
         builder.HasIndex(e => e.State);
         builder.HasIndex(e => e.ProjectId);
         builder.HasIndex(e => e.Classification);
         builder.HasIndex(e => e.CreatedAt);
         builder.HasIndex(e => e.ExpiresAt);
-        builder.HasIndex(e => new { e.Scope, e.ProjectId, e.State });
+        builder.HasIndex(e => e.MemoryType);
+        builder.HasIndex(e => e.AccessCount);
+        builder.HasIndex(e => e.UpdatedAt);
 
+        // Composite indexes for common queries
+        builder.HasIndex(e => new { e.Scope, e.ProjectId, e.State });
+        builder.HasIndex(e => new { e.Scope, e.State, e.MemoryType });
+        builder.HasIndex(e => new { e.State, e.ExpiresAt });
+        builder.HasIndex(e => new { e.Scope, e.UserId, e.State });
+
+        // Relationships
         builder.HasOne(e => e.Project)
             .WithMany(p => p.Memories)
             .HasForeignKey(e => e.ProjectId)

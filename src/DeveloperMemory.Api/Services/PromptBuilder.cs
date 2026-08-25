@@ -28,13 +28,15 @@ public class PromptBuilder
         OpenAIChatCompletionRequest request,
         List<DeveloperProfile> profiles,
         List<SearchResult> searchResults,
-        List<MemoryDto>? memories = null)
+        List<MemoryDto>? memories = null,
+        string? intelligenceContext = null)
     {
         var hasProfileContext = profiles.Count > 0;
         var hasKnowledgeContext = searchResults.Count > 0;
         var hasMemoryContext = memories?.Count > 0;
+        var hasIntelligenceContext = !string.IsNullOrWhiteSpace(intelligenceContext);
 
-        if (!hasProfileContext && !hasKnowledgeContext && !hasMemoryContext)
+        if (!hasProfileContext && !hasKnowledgeContext && !hasMemoryContext && !hasIntelligenceContext)
         {
             return request;
         }
@@ -45,8 +47,18 @@ public class PromptBuilder
         contextBuilder.AppendLine("--- DeveloperMemory Context ---");
         contextBuilder.AppendLine();
 
-        if (hasMemoryContext)
+        // Phase 4: If intelligence engine produced context, use it as primary
+        // intelligence layer. Individual memory/profile/knowledge sections still
+        // appear for backward compatibility, but the intelligence context provides
+        // the structured, deduplicated, optimized version.
+        if (hasIntelligenceContext)
         {
+            contextBuilder.AppendLine(intelligenceContext);
+        }
+
+        if (hasMemoryContext && !hasIntelligenceContext)
+        {
+            // Only show raw memory context when intelligence engine didn't produce a package
             contextBuilder.AppendLine(BuildMemoryContext(memories!));
         }
 

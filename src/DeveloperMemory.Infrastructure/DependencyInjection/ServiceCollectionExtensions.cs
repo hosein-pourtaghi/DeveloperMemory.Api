@@ -1,5 +1,6 @@
 using DeveloperMemory.Application.Contracts;
 using DeveloperMemory.Application.Services;
+using DeveloperMemory.Application.Services.PromptIntelligence;
 using DeveloperMemory.Application.Services.Retrieval;
 using DeveloperMemory.Domain.Interfaces;
 using DeveloperMemory.Infrastructure.Persistence;
@@ -50,6 +51,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRetrievalRanker, RelevanceRanker>();
         services.AddScoped<IContextBudgeter, CharacterContextBudgeter>();
         services.AddScoped<IMemoryRetrievalService, MemoryRetrievalService>();
+
+        // Phase 4: Prompt Intelligence Engine
+        services.AddScoped<IPromptAnalyzer, DeterministicPromptAnalyzer>();
+        services.AddScoped<IConstraintResolver, ConstraintResolver>();
+        services.AddScoped<IMemoryContextAssembler, MemoryContextAssembler>();
+        services.AddScoped<IPromptComposer, DeterministicPromptComposer>();
+        services.AddScoped<IPromptOptimizer, DeterministicPromptOptimizer>();
+        services.AddScoped<IPromptIntelligenceEngine, PromptIntelligenceEngine>();
 
         return services;
     }

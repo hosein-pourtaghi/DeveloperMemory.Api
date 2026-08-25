@@ -7,6 +7,7 @@ public class CreateMemoryRequest
     public string Title { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
     public MemoryScope Scope { get; set; } = MemoryScope.Global;
+    public MemoryType MemoryType { get; set; } = MemoryType.Other;
     public DataClassification Classification { get; set; } = DataClassification.Internal;
     public Guid? ProjectId { get; set; }
     public string? WorkspaceId { get; set; }
@@ -15,4 +16,5 @@ public class CreateMemoryRequest
     public List<string>? Tags { get; set; }
     public DateTime? ExpiresAt { get; set; }
     public double Importance { get; set; } = 0.5;
+    public double Confidence { get; set; } = 1.0;
 }

@@ -145,7 +145,7 @@ public class PromptIntelligenceEngineTests
     }
 
     [Fact]
-    public async Task ProcessAsync_HandlesRetrievalFailure_Gracefully()
+    public async Task ProcessAsync_RetrievalFails_ReturnsDegradedPackage()
     {
         _mockAnalyzer.Setup(a => a.Analyze(It.IsAny<string>(), It.IsAny<PromptContext?>()))
             .Returns(new PromptAnalysis { OriginalRequest = "test", Intent = IntentType.General });
@@ -169,6 +169,8 @@ public class PromptIntelligenceEngineTests
 
         Assert.NotNull(result);
         Assert.Equal("optimized", result.OptimizedPrompt);
+        Assert.Equal(PromptIntelligenceStatus.Degraded, result.Status);
+        Assert.Contains(result.Warnings, w => w.Contains("retrieval"));
     }
 
     [Fact]

@@ -60,6 +60,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPromptOptimizer, DeterministicPromptOptimizer>();
         services.AddScoped<IPromptIntelligenceEngine, PromptIntelligenceEngine>();
 
+        // Phase 5: Memory Intelligence
+        services.AddScoped<IMemoryIngestionService, MemoryIngestionService>();
+        services.AddScoped<IMemoryConflictDetector, MemoryConflictDetector>();
+        services.AddScoped<IMemoryRanker, MemoryRanker>();
+        services.AddScoped<IMemoryExtractionStrategy, DeterministicExtractionStrategy>();
+
         return services;
     }
 }

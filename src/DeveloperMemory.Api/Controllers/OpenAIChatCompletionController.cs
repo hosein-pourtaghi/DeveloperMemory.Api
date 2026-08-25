@@ -15,12 +15,15 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
-// Phase 4: Prompt Intelligence Engine is used for prompt construction.
-// The controller injects IPromptIntelligenceEngine which orchestrates
-// analysis, constraint resolution, memory context assembly, composition, and optimization.
-
 namespace DeveloperMemory.Api.Controllers;
 
+/// <summary>
+/// Single authoritative intelligence path:
+///   Request → PromptIntelligenceEngine → PromptPackage → PromptBuilder → Provider
+/// 
+/// The gateway does NOT maintain a separate direct retrieval fallback.
+/// All degradation is owned by the Prompt Intelligence Engine.
+/// </summary>
 [ApiController]
 [Route("v1")]
 public class OpenAIChatCompletionController : ControllerBase
@@ -29,7 +32,6 @@ public class OpenAIChatCompletionController : ControllerBase
     private readonly PromptBuilder _promptBuilder;
     private readonly KnowledgeService _knowledgeService;
     private readonly ProfileService _profileService;
-    private readonly IMemoryRetrievalService _retrievalService;
     private readonly IPromptIntelligenceEngine _intelligenceEngine;
     private readonly RequestLogger _requestLogger;
     private readonly ModelSelectionSettings _modelSelection;
@@ -46,7 +48,6 @@ public class OpenAIChatCompletionController : ControllerBase
         PromptBuilder promptBuilder,
         KnowledgeService knowledgeService,
         ProfileService profileService,
-        IMemoryRetrievalService retrievalService,
         IPromptIntelligenceEngine intelligenceEngine,
         RequestLogger requestLogger,
         IOptions<ModelSelectionSettings> modelSelection,
@@ -56,7 +57,6 @@ public class OpenAIChatCompletionController : ControllerBase
         _promptBuilder = promptBuilder;
         _knowledgeService = knowledgeService;
         _profileService = profileService;
-        _retrievalService = retrievalService;
         _intelligenceEngine = intelligenceEngine;
         _requestLogger = requestLogger;
         _modelSelection = modelSelection.Value;
@@ -111,14 +111,13 @@ public class OpenAIChatCompletionController : ControllerBase
                 selectedModel = _providerClient.ResolveModel(request.Model);
             }
 
-            // Apply the selected model to the request
             request.Model = selectedModel;
 
             _logger.LogInformation(
                 "Mode detected: {Mode} | Selected model: {Model} | AutoSelect: {AutoSelect}",
                 mode, selectedModel, _modelSelection.AutoSelectModel);
 
-            // ── Step 3: Prompt Intelligence + Knowledge + Memory ──
+            // ── Step 3: Load knowledge and profiles ──
             var lastUserMessage = request.Messages.LastOrDefault(m => m.Role == "user");
             var searchQuery = lastUserMessage?.Content;
 
@@ -127,102 +126,45 @@ public class OpenAIChatCompletionController : ControllerBase
                 ? _knowledgeService.SearchDocuments(searchQuery, request.Project, request.Tags)
                 : new List<SearchResult>();
 
-            // Phase 4: Use Prompt Intelligence Engine for structured context
-            Domain.Entities.PromptPackage? promptPackage = null;
-            try
+            // ── Step 4: Prompt Intelligence Engine (single authoritative path) ──
+            // Parse context from request
+            Guid? projectGuid = null;
+            if (!string.IsNullOrWhiteSpace(request.Project) &&
+                Guid.TryParse(request.Project, out var parsed))
             {
-                if (!string.IsNullOrWhiteSpace(searchQuery))
-                {
-                    Guid? projectGuid = null;
-                    if (!string.IsNullOrWhiteSpace(request.Project) &&
-                        Guid.TryParse(request.Project, out var parsed))
-                    {
-                        projectGuid = parsed;
-                    }
-
-                    promptPackage = await _intelligenceEngine.ProcessAsync(
-                        searchQuery,
-                        request.User ?? "anonymous",
-                        projectGuid,
-                        null, // workspaceId — not yet in the API model
-                        contextTokenBudget: 4000,
-                        ct: cancellationToken);
-
-                    _logger.LogInformation(
-                        "Prompt Intelligence: intent={Intent}, task={TaskType}, memories={Refined}/{Candidate}, " +
-                        "constraints={Constraints}, duplicates={Duplicates}, conflicts={Conflicts}, " +
-                        "{Duration}ms",
-                        promptPackage.Analysis.Intent,
-                        promptPackage.Analysis.TaskType,
-                        promptPackage.Metadata.RefinedMemoryCount,
-                        promptPackage.Metadata.CandidateMemoryCount,
-                        promptPackage.Metadata.ConstraintsResolved,
-                        promptPackage.Metadata.DuplicatesRemoved,
-                        promptPackage.Metadata.ConflictsDetected,
-                        promptPackage.Metadata.TotalDurationMs);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Prompt Intelligence Engine failed; falling back to direct retrieval");
+                projectGuid = parsed;
             }
 
-            // Fallback: if the intelligence engine didn't produce a package, use direct retrieval
-            var memoryEntries = new List<MemoryDto>();
-            if (promptPackage == null && !string.IsNullOrWhiteSpace(searchQuery))
-            {
-                try
-                {
-                    Guid? projectGuid = null;
-                    if (!string.IsNullOrWhiteSpace(request.Project) &&
-                        Guid.TryParse(request.Project, out var parsed))
-                    {
-                        projectGuid = parsed;
-                    }
+            var promptPackage = await _intelligenceEngine.ProcessAsync(
+                searchQuery ?? string.Empty,
+                request.User ?? "anonymous",
+                projectGuid,
+                request.WorkspaceId,
+                contextTokenBudget: 4000,
+                ct: cancellationToken);
 
-                    var promptContext = await _retrievalService.BuildPromptContextAsync(
-                        new RetrievalRequest
-                        {
-                            Query = searchQuery,
-                            ProjectId = projectGuid,
-                            UserId = request.User ?? "anonymous",
-                            MaximumResults = 10,
-                            ContextTokenBudget = 2000
-                        },
-                        cancellationToken);
+            _logger.LogInformation(
+                "Intelligence: status={Status}, intent={Intent}, task={TaskType}, " +
+                "memories={Refined}/{Candidate}, constraints={Constraints}, " +
+                "{Duration}ms, warnings={Warnings}",
+                promptPackage.Status,
+                promptPackage.Analysis.Intent,
+                promptPackage.Analysis.TaskType,
+                promptPackage.Metadata.RefinedMemoryCount,
+                promptPackage.Metadata.CandidateMemoryCount,
+                promptPackage.Metadata.ConstraintsResolved,
+                promptPackage.Metadata.TotalDurationMs,
+                promptPackage.Warnings.Count);
 
-                    memoryEntries = promptContext.RetrievedMemories.Select(rm => new MemoryDto
-                    {
-                        Id = rm.MemoryId,
-                        Title = rm.Title,
-                        Content = rm.Content,
-                        Scope = rm.Scope,
-                        State = rm.State,
-                        Classification = rm.Classification,
-                        ProjectId = rm.ProjectId,
-                        Source = rm.Source,
-                        Tags = rm.Tags,
-                        Importance = rm.Importance,
-                        UpdatedAt = rm.UpdatedAt
-                    }).ToList();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Direct retrieval also failed; continuing without memory context");
-                }
-            }
-
-            // ── Step 4: Build enriched request ──
-            // If the intelligence engine produced a package, inject its optimized prompt
-            // into the PromptBuilder as additional context alongside profiles and knowledge.
-            var enrichedRequest = promptPackage != null
-                ? _promptBuilder.BuildEnrichedRequest(
-                    request, profiles, searchResults, memoryEntries,
-                    intelligenceContext: promptPackage.OptimizedPrompt)
-                : _promptBuilder.BuildEnrichedRequest(request, profiles, searchResults, memoryEntries);
+            // ── Step 5: Build enriched request ──
+            // The PromptPackage.OptimizedPrompt is the single source of intelligence context.
+            // No fallback path exists. Degradation is handled inside the engine.
+            var enrichedRequest = _promptBuilder.BuildEnrichedRequest(
+                request, profiles, searchResults,
+                intelligenceContext: promptPackage.OptimizedPrompt);
             var enrichedTokens = TokenEstimator.EstimateRequestTokens(enrichedRequest);
 
-            // ── Step 5: Log enriched request ──
+            // ── Step 6: Log enriched request ──
             await _requestLogger.LogRequestAsync(
                 "ENRICHED",
                 enrichedRequest,
@@ -231,7 +173,7 @@ public class OpenAIChatCompletionController : ControllerBase
                 enrichedTokens: enrichedTokens,
                 isStreaming: isStreaming);
 
-            // ── Step 6: Forward to downstream provider ──
+            // ── Step 7: Forward to downstream provider ──
             var startTime = DateTime.UtcNow;
 
             if (isStreaming)
@@ -246,18 +188,18 @@ public class OpenAIChatCompletionController : ControllerBase
             var latencyMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
 
             _logger.LogInformation(
-                "Request completed | mode={Mode} | model={Model} | incoming={Incoming} | enriched={Enriched} | latency={Latency}ms",
-                mode, selectedModel, incomingTokens, enrichedTokens, latencyMs);
+                "Request completed | status={Status} | mode={Mode} | model={Model} | incoming={Incoming} | enriched={Enriched} | latency={Latency}ms",
+                promptPackage.Status, mode, selectedModel, incomingTokens, enrichedTokens, latencyMs);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogDebug("Chat completion request was cancelled by client");
         }
         catch (DownstreamProviderException ex)
         {
             _logger.LogError(ex, "Downstream provider error for chat completion");
             var (statusCode, errorType) = MapProviderError(ex.StatusCode);
             await WriteErrorResponse(HttpContext, statusCode, ex.RawErrorContent, errorType);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            _logger.LogDebug("Chat completion request was cancelled by client");
         }
         catch (Exception ex)
         {
@@ -286,7 +228,6 @@ public class OpenAIChatCompletionController : ControllerBase
         var responseTokens = TokenEstimator.EstimateResponseTokens(response);
         var providerTokens = response.Usage?.TotalTokens;
 
-        // Log response with full metrics
         await _requestLogger.LogRequestAsync(
             "RESPONSE",
             enrichedRequest,

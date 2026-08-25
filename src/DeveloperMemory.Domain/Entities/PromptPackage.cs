@@ -14,6 +14,7 @@ public class PromptPackage
 {
     /// <summary>
     /// The original user request that triggered this package.
+    /// Always preserved exactly, even in degraded/failed states.
     /// </summary>
     public string OriginalRequest { get; set; } = string.Empty;
 
@@ -24,6 +25,8 @@ public class PromptPackage
 
     /// <summary>
     /// Resolved and deduplicated constraints, ordered by precedence.
+    /// Explicit constraints from the current request are always preserved
+    /// when safely available, even if later stages failed.
     /// </summary>
     public List<PromptConstraint> Constraints { get; set; } = [];
 
@@ -39,6 +42,7 @@ public class PromptPackage
 
     /// <summary>
     /// The final optimized prompt text, ready for the downstream provider.
+    /// When optimization fails, this falls back to the composed prompt.
     /// </summary>
     public string OptimizedPrompt { get; set; } = string.Empty;
 
@@ -66,6 +70,44 @@ public class PromptPackage
     /// The user context identifier.
     /// </summary>
     public string UserId { get; set; } = string.Empty;
+
+    // ── Reliability contract ──
+
+    /// <summary>
+    /// Processing status: Full, Degraded, or Failed.
+    /// Callers should check this to determine whether the package is complete.
+    /// </summary>
+    public PromptIntelligenceStatus Status { get; set; } = PromptIntelligenceStatus.Full;
+
+    /// <summary>
+    /// The pipeline stage that failed, if Status is Degraded or Failed.
+    /// Null when Status is Full.
+    /// </summary>
+    public PromptIntelligenceStage? FailedStage { get; set; }
+
+    /// <summary>
+    /// Human-readable warnings about degradation.
+    /// Safe for logging. Does not contain sensitive memory content.
+    /// </summary>
+    public List<string> Warnings { get; set; } = [];
+
+    /// <summary>
+    /// Reasons for degradation (e.g., "retrieval_unavailable", "optimization_failed").
+    /// Structured for programmatic consumption.
+    /// </summary>
+    public List<string> DegradationReasons { get; set; } = [];
+
+    /// <summary>
+    /// Whether the original request was preserved exactly.
+    /// Should always be true. Included as a contract invariant check.
+    /// </summary>
+    public bool OriginalRequestPreserved { get; set; } = true;
+
+    /// <summary>
+    /// Whether explicit constraints from the current request are present.
+    /// Should be true when any explicit constraints were available.
+    /// </summary>
+    public bool ConstraintsPreserved { get; set; } = true;
 }
 
 /// <summary>
@@ -130,7 +172,7 @@ public class PromptIntelligenceMetadata
     public int ConstraintsResolved { get; set; }
 
     /// <summary>
-    /// Final prompt character count after optimization.
+    /// Final prompt character count after optimization (or composition if optimization failed).
     /// </summary>
     public int FinalPromptLength { get; set; }
 
@@ -138,4 +180,24 @@ public class PromptIntelligenceMetadata
     /// Number of context sections created.
     /// </summary>
     public int ContextSectionCount { get; set; }
+
+    /// <summary>
+    /// Processing status from the engine.
+    /// </summary>
+    public PromptIntelligenceStatus Status { get; set; } = PromptIntelligenceStatus.Full;
+
+    /// <summary>
+    /// Pipeline stage that failed, if any.
+    /// </summary>
+    public PromptIntelligenceStage? FailedStage { get; set; }
+
+    /// <summary>
+    /// Warnings generated during processing.
+    /// </summary>
+    public List<string> Warnings { get; set; } = [];
+
+    /// <summary>
+    /// Degradation reasons for observability.
+    /// </summary>
+    public List<string> DegradationReasons { get; set; } = [];
 }

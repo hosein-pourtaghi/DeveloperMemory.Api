@@ -17,7 +17,9 @@ public interface IPromptComposer
         PromptAnalysis analysis,
         List<PromptConstraint> constraints,
         List<ContextSection> sections,
-        string originalRequest);
+        string originalRequest,
+        string? profileContext = null,
+        string? knowledgeContext = null);
 }
 
 /// <summary>

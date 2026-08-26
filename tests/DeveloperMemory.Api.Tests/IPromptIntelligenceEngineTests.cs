@@ -16,6 +16,8 @@ public class StubPromptIntelligenceEngine : IPromptIntelligenceEngine
     public Guid? LastProjectId { get; private set; }
     public string? LastWorkspaceId { get; private set; }
     public int LastTokenBudget { get; private set; }
+    public string? LastProfileContext { get; private set; }
+    public string? LastKnowledgeContext { get; private set; }
     public PromptPackage ResultToReturn { get; set; } = new()
     {
         Status = PromptIntelligenceStatus.Full,
@@ -29,6 +31,8 @@ public class StubPromptIntelligenceEngine : IPromptIntelligenceEngine
         Guid? projectId = null,
         string? workspaceId = null,
         int contextTokenBudget = 4000,
+        string? profileContext = null,
+        string? knowledgeContext = null,
         CancellationToken ct = default)
     {
         LastUserRequest = userRequest;
@@ -36,6 +40,8 @@ public class StubPromptIntelligenceEngine : IPromptIntelligenceEngine
         LastProjectId = projectId;
         LastWorkspaceId = workspaceId;
         LastTokenBudget = contextTokenBudget;
+        LastProfileContext = profileContext;
+        LastKnowledgeContext = knowledgeContext;
 
         ResultToReturn.OriginalRequest = userRequest;
         return Task.FromResult(ResultToReturn);

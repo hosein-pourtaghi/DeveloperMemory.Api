@@ -59,6 +59,8 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
         Guid? projectId = null,
         string? workspaceId = null,
         int contextTokenBudget = 4000,
+        string? profileContext = null,
+        string? knowledgeContext = null,
         CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -223,7 +225,8 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
         try
         {
             composition = _composer.Compose(
-                analysis, constraints, assemblyResult.Sections, userRequest);
+                analysis, constraints, assemblyResult.Sections, userRequest,
+                profileContext, knowledgeContext);
             compositionStopwatch.Stop();
             metadata.CompositionDurationMs = compositionStopwatch.Elapsed.TotalMilliseconds;
         }

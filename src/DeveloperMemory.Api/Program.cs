@@ -132,7 +132,6 @@ builder.Services.Configure<ModelSelectionSettings>(builder.Configuration.GetSect
 // Register existing services (file-based knowledge and profiles)
 builder.Services.AddSingleton<ProfileService>();
 builder.Services.AddSingleton<KnowledgeService>();
-builder.Services.AddSingleton<PromptBuilder>();
 builder.Services.AddSingleton<RequestLogger>();
 
 // Register the model gateway: FreeLlmApiClient is the current provider-specific implementation.

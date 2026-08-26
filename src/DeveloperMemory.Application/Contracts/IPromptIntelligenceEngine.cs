@@ -18,6 +18,11 @@ public interface IPromptIntelligenceEngine
     /// <summary>
     /// Processes a raw request through the full intelligence pipeline and produces
     /// a complete PromptPackage ready for downstream consumption.
+    ///
+    /// The optional profileContext and knowledgeContext parameters allow the caller
+    /// to provide pre-formatted additional context (developer profiles, knowledge
+    /// documents) that the engine includes in the composed prompt alongside its
+    /// own intelligence-derived context.
     /// </summary>
     Task<PromptPackage> ProcessAsync(
         string userRequest,
@@ -25,6 +30,8 @@ public interface IPromptIntelligenceEngine
         Guid? projectId = null,
         string? workspaceId = null,
         int contextTokenBudget = 4000,
+        string? profileContext = null,
+        string? knowledgeContext = null,
         CancellationToken ct = default);
 
     /// <summary>

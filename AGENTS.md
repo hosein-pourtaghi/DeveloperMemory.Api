@@ -76,10 +76,9 @@ DeveloperMemory.Api.sln (at repository root)
 │   │   └── Interfaces/                      # IMemoryRepository, IProjectRepository
 │   │
 │   ├── DeveloperMemory.Application/
-│   │   ├── Contracts/                       # IMemoryService, IProjectService
-│   │   ├── Services/                        # MemoryService, ProjectService
-│   │   ├── DTOs/                            # Request/response DTOs
-│   │   └── Exceptions/                      # DomainException, NotFoundException variants
+│   │   ├── Contracts/                       # IMemoryService, IProjectService, IPromptIntelligenceEngine,
+│   │   │                                    #   IMemoryRetrievalService, IContextOrchestrator, IIntentAnalyzer, etc.
+│   │   ├── Services/                        # MemoryService, ProjectService, PromptIntelligence/, Retrieval/
 │   │
 │   └── DeveloperMemory.Infrastructure/
 │       ├── Persistence/                     # DbContext, Repositories, EF Configurations
@@ -98,9 +97,12 @@ DeveloperMemory.Api.sln (at repository root)
 │   └── DeveloperMemory.Api.Tests/
 │       ├── IModelGatewayTests.cs            # 15 test methods (gateway abstraction)
 │       ├── IMemoryRetrieverTests.cs         # 10 test methods (retrieval abstraction)
-│       └── IPromptIntelligenceEngineTests.cs # 14 test methods (engine abstraction)
+│       ├── IPromptIntelligenceEngineTests.cs # 16 test methods (engine abstraction)
+│       ├── ModeDetectorTests.cs             # 19 test methods (mode detection)
+│       └── PromptBuilderTests.cs            # 16 test methods (prompt assembly)
+│   └── DeveloperMemory.Tests/               # Consolidated test project (many more tests)
 │
-├── Dockerfile                              # Multi-stage build
+├── Dockerfile                              # Multi-stage build                              # Multi-stage build
 ├── docker-compose.yml                      # 4 services: api, api-postgres, postgres, redis
 └── .dockerignore
 ```
@@ -169,7 +171,7 @@ DeveloperMemory.Api.sln (at repository root)
 
 1. **Two memory systems coexist:** The legacy `KnowledgeService` (file-based Markdown) and the persistent `MemoryService` (PostgreSQL). Both are orchestrated behind `IMemoryRetriever` by `ContextRetrievalService`. Do not remove either without understanding the impact.
 
-2. **Tests exist across 4 projects:** `tests/DeveloperMemory.Domain.Tests/` (12 methods), `tests/DeveloperMemory.Application.Tests/` (16 methods), `tests/DeveloperMemory.Infrastructure.Tests/` (23 methods), `tests/DeveloperMemory.Api.Tests/` (~39 methods). Total: ~90 test methods. No integration tests for controllers or services yet.
+2. **Tests exist across 5 projects:** `tests/DeveloperMemory.Domain.Tests/` (12 methods), `tests/DeveloperMemory.Application.Tests/` (16 methods), `tests/DeveloperMemory.Infrastructure.Tests/` (23 methods), `tests/DeveloperMemory.Api.Tests/` (~76 methods), `tests/DeveloperMemory.Tests/` (consolidated, many more). Total: ~133+ test methods. No integration tests for controllers or services yet.
 
 3. **Token estimates are approximate:** ~4 chars/token heuristic. For billing-accurate counts, check `provider_tokens` in the response.
 
@@ -187,7 +189,7 @@ DeveloperMemory.Api.sln (at repository root)
 
 10. **Retrieval abstraction:** The gateway controller depends on `IMemoryRetriever` (in `Api/Abstractions/`), not on `KnowledgeService` or `IMemoryService` directly. `ContextRetrievalService` orchestrates both retrieval sources. To change retrieval strategy, implement `IMemoryRetriever` and swap the DI registration.
 
-11. **Prompt intelligence engine:** The controller delegates context retrieval and prompt assembly to `IPromptIntelligenceEngine` (implemented by `PromptIntelligenceService`). The engine orchestrates profile loading, memory/knowledge retrieval (via `IMemoryRetriever`), and prompt enrichment (via `PromptBuilder`). To change intelligence behavior, implement `IPromptIntelligenceEngine` and swap the DI registration.
+11. **Prompt intelligence engine:** The controller delegates memory retrieval and optimization to `IPromptIntelligenceEngine` (defined in `DeveloperMemory.Application.Contracts`, implemented by `PromptIntelligenceEngine` in Application layer). The engine orchestrates analysis, memory retrieval, constraints, context assembly, composition, and optimization. The controller loads profiles and knowledge as formatted text and passes them into the engine, which includes them in the composed prompt. To change intelligence behavior, implement `IPromptIntelligenceEngine` and swap the DI registration.
 
 12. **pgvector available:** docker-compose uses `pgvector/pgvector:pg16` — vector extension ready for future semantic search without infrastructure changes.
 

@@ -2,9 +2,6 @@ using DeveloperMemory.Api.Abstractions;
 using DeveloperMemory.Api.Models;
 using DeveloperMemory.Api.Services;
 using DeveloperMemory.Application.Contracts;
-using DeveloperMemory.Application.DTOs;
-using DeveloperMemory.Domain.Entities;
-using DeveloperMemory.Domain.Enums;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -12,6 +9,7 @@ using DeveloperMemory.Api.Infrastructure.Configuration;
 using System;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,18 +17,24 @@ using System.Threading.Tasks;
 namespace DeveloperMemory.Api.Controllers;
 
 /// <summary>
-/// Single authoritative intelligence path:
-///   Request → PromptIntelligenceEngine → PromptPackage → PromptBuilder → Provider
+/// Gateway controller for OpenAI-compatible chat completions.
 /// 
-/// The gateway does NOT maintain a separate direct retrieval fallback.
-/// All degradation is owned by the Prompt Intelligence Engine.
+/// Orchestration flow:
+///   1. Validate request
+///   2. Detect mode, select model
+///   3. Load profiles + knowledge (file-based context, formatted as text)
+///   4. Run IPromptIntelligenceEngine (analysis + memory retrieval + optimization + prompt assembly)
+///   5. Inject enriched prompt into system message
+///   6. Forward to provider via IModelGateway
+/// 
+/// The controller owns HTTP concerns, mode detection, model selection, logging,
+/// and provider forwarding. All prompt context assembly is delegated to the engine.
 /// </summary>
 [ApiController]
 [Route("v1")]
 public class OpenAIChatCompletionController : ControllerBase
 {
     private readonly IModelGateway _modelGateway;
-    private readonly PromptBuilder _promptBuilder;
     private readonly KnowledgeService _knowledgeService;
     private readonly ProfileService _profileService;
     private readonly IPromptIntelligenceEngine _intelligenceEngine;
@@ -46,7 +50,6 @@ public class OpenAIChatCompletionController : ControllerBase
 
     public OpenAIChatCompletionController(
         IModelGateway modelGateway,
-        PromptBuilder promptBuilder,
         KnowledgeService knowledgeService,
         ProfileService profileService,
         IPromptIntelligenceEngine intelligenceEngine,
@@ -55,7 +58,6 @@ public class OpenAIChatCompletionController : ControllerBase
         ILogger<OpenAIChatCompletionController> logger)
     {
         _modelGateway = modelGateway;
-        _promptBuilder = promptBuilder;
         _knowledgeService = knowledgeService;
         _profileService = profileService;
         _intelligenceEngine = intelligenceEngine;
@@ -118,17 +120,21 @@ public class OpenAIChatCompletionController : ControllerBase
                 "Mode detected: {Mode} | Selected model: {Model} | AutoSelect: {AutoSelect}",
                 mode, selectedModel, _modelSelection.AutoSelectModel);
 
-            // ── Step 3: Load knowledge and profiles ──
+            // ── Step 3: Load knowledge and profiles (formatted as text) ──
             var lastUserMessage = request.Messages.LastOrDefault(m => m.Role == "user");
             var searchQuery = lastUserMessage?.Content;
 
             var profiles = await _profileService.LoadProfilesAsync();
+            var profileContext = FormatProfileContext(profiles);
+
             var searchResults = !string.IsNullOrWhiteSpace(searchQuery)
                 ? _knowledgeService.SearchDocuments(searchQuery, request.Project, request.Tags)
                 : new List<SearchResult>();
+            var knowledgeContext = FormatKnowledgeContext(searchResults);
 
             // ── Step 4: Prompt Intelligence Engine (single authoritative path) ──
-            // Parse context from request
+            // The engine handles analysis, memory retrieval, constraints, context assembly,
+            // prompt composition, optimization, and now also includes profile/knowledge context.
             Guid? projectGuid = null;
             if (!string.IsNullOrWhiteSpace(request.Project) &&
                 Guid.TryParse(request.Project, out var parsed))
@@ -142,6 +148,8 @@ public class OpenAIChatCompletionController : ControllerBase
                 projectGuid,
                 request.WorkspaceId,
                 contextTokenBudget: 4000,
+                profileContext: profileContext,
+                knowledgeContext: knowledgeContext,
                 ct: cancellationToken);
 
             _logger.LogInformation(
@@ -158,11 +166,10 @@ public class OpenAIChatCompletionController : ControllerBase
                 promptPackage.Warnings.Count);
 
             // ── Step 5: Build enriched request ──
-            // The PromptPackage.OptimizedPrompt is the single source of intelligence context.
-            // No fallback path exists. Degradation is handled inside the engine.
-            var enrichedRequest = _promptBuilder.BuildEnrichedRequest(
-                request, profiles, searchResults,
-                intelligenceContext: promptPackage.OptimizedPrompt);
+            // The PromptPackage.OptimizedPrompt is the single authoritative source of all context.
+            // It includes intelligence-derived context, profiles, and knowledge.
+            // Degradation is handled inside the engine.
+            var enrichedRequest = InjectEnrichedPrompt(request, promptPackage.OptimizedPrompt);
             var enrichedTokens = TokenEstimator.EstimateRequestTokens(enrichedRequest);
 
             // ── Step 6: Log enriched request ──
@@ -384,5 +391,143 @@ public class OpenAIChatCompletionController : ControllerBase
             System.Net.HttpStatusCode.RequestTimeout => (StatusCodes.Status504GatewayTimeout, "timeout_error"),
             _ => (StatusCodes.Status502BadGateway, "upstream_error")
         };
+    }
+
+    // ── Context formatting helpers ──
+
+    /// <summary>
+    /// Formats developer profiles as a text block for inclusion in the prompt.
+    /// Profiles are static identity context — always included when available.
+    /// </summary>
+    private static string FormatProfileContext(List<DeveloperProfile> profiles)
+    {
+        if (profiles.Count == 0)
+            return string.Empty;
+
+        var sb = new StringBuilder();
+        sb.AppendLine("[Developer Profile]");
+
+        foreach (var profile in profiles)
+        {
+            sb.AppendLine($"Name: {profile.Name}");
+            sb.AppendLine($"Role: {profile.Role}");
+            if (profile.Skills.Count > 0)
+                sb.AppendLine($"Skills: {string.Join(", ", profile.Skills)}");
+            if (!string.IsNullOrWhiteSpace(profile.Experience))
+                sb.AppendLine($"Experience: {profile.Experience}");
+            if (!string.IsNullOrWhiteSpace(profile.Bio))
+                sb.AppendLine($"Bio: {Truncate(profile.Bio, 500)}");
+            sb.AppendLine();
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Formats knowledge search results as a text block for inclusion in the prompt.
+    /// Only included when there are results matching the current query.
+    /// </summary>
+    private static string FormatKnowledgeContext(List<SearchResult> searchResults)
+    {
+        if (searchResults.Count == 0)
+            return string.Empty;
+
+        var sb = new StringBuilder();
+        sb.AppendLine("[Relevant Knowledge]");
+
+        var included = 0;
+        foreach (var result in searchResults)
+        {
+            if (included >= 5) break;
+
+            var contentPreview = Truncate(result.Content, 500);
+            sb.AppendLine($"## {result.Title} (relevance: {result.Score:F2})");
+            sb.AppendLine(contentPreview);
+            sb.AppendLine();
+            included++;
+        }
+
+        if (searchResults.Count > 5)
+        {
+            sb.AppendLine($"({searchResults.Count - 5} additional results omitted for brevity)");
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Injects the engine-produced enriched prompt into the OpenAI request's system message.
+    /// The enriched prompt includes all intelligence context, profiles, and knowledge.
+    /// </summary>
+    private static OpenAIChatCompletionRequest InjectEnrichedPrompt(
+        OpenAIChatCompletionRequest request, string enrichedContent)
+    {
+        if (string.IsNullOrWhiteSpace(enrichedContent))
+            return request;
+
+        var contextBlock = $"\n\n--- DeveloperMemory Context ---\n\n{enrichedContent}\n\n--- End DeveloperMemory Context ---\n\n";
+
+        var enrichedMessages = new List<Message>();
+        bool contextInjected = false;
+
+        foreach (var message in request.Messages)
+        {
+            if (message.Role == "system" && !contextInjected)
+            {
+                enrichedMessages.Add(new Message
+                {
+                    Role = "system",
+                    Content = message.Content + contextBlock,
+                    ExtensionData = message.ExtensionData
+                });
+                contextInjected = true;
+            }
+            else
+            {
+                enrichedMessages.Add(new Message
+                {
+                    Role = message.Role,
+                    Content = message.Content,
+                    ToolCalls = message.ToolCalls,
+                    ToolCallId = message.ToolCallId,
+                    Name = message.Name,
+                    ExtensionData = message.ExtensionData
+                });
+            }
+        }
+
+        if (!contextInjected)
+        {
+            enrichedMessages.Insert(0, new Message
+            {
+                Role = "system",
+                Content = $"You are a helpful assistant.{contextBlock}"
+            });
+        }
+
+        return new OpenAIChatCompletionRequest
+        {
+            Model = request.Model,
+            Messages = enrichedMessages,
+            Temperature = request.Temperature,
+            TopP = request.TopP,
+            N = request.N,
+            Stream = request.Stream,
+            Stop = request.Stop,
+            MaxTokens = request.MaxTokens,
+            MaxCompletionTokens = request.MaxCompletionTokens,
+            FrequencyPenalty = request.FrequencyPenalty,
+            PresencePenalty = request.PresencePenalty,
+            User = request.User,
+            StreamOptions = request.StreamOptions,
+            ExtensionData = request.ExtensionData
+        };
+    }
+
+    private static string Truncate(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text)) return string.Empty;
+        if (text.Length <= maxLength) return text;
+        return text[..maxLength] + "...";
     }
 }

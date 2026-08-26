@@ -70,8 +70,6 @@ DeveloperMemory.Api.sln (at repository root)
 │       │   ├── DownstreamProviderException.cs
 │       │   ├── IMemoryRetriever.cs        # Provider-independent retrieval abstraction
 │       │   ├── MemoryRetrievalResult.cs   # Combined retrieval result type
-│       │   ├── IPromptIntelligenceEngine.cs # Core prompt intelligence boundary
-│       │   ├── PromptIntelligenceResult.cs # Engine result type
 │       │   └── ManagedStream.cs           # Stream wrapper for provider lifecycle
 │       ├── Controllers/
 │       │   ├── MemoryController.cs
@@ -86,7 +84,6 @@ DeveloperMemory.Api.sln (at repository root)
 │       │   ├── ProfileService.cs
 │       │   ├── FreeLlmApiClient.cs
 │       │   ├── ContextRetrievalService.cs  # IMemoryRetriever implementation
-│       │   ├── PromptIntelligenceService.cs # IPromptIntelligenceEngine implementation
 │       │   ├── TokenEstimator.cs
 │       │   └── RequestLogger.cs
 │       ├── Models/                       # OpenAI types, knowledge, profiles
@@ -102,10 +99,14 @@ DeveloperMemory.Api.sln (at repository root)
 │   ├── DeveloperMemory.Infrastructure.Tests/
 │   │   ├── InMemoryDbFixture.cs
 │   │   ├── MemoryRepositoryTests.cs      # 16 test methods
-│   │   └── ProjectRepositoryTests.cs     # 7 test methods│       └── DeveloperMemory.Api.Tests/
+│   │   └── ProjectRepositoryTests.cs     # 7 test methods
+│   └── DeveloperMemory.Api.Tests/
 │       ├── IModelGatewayTests.cs         # 15 test methods
 │       ├── IMemoryRetrieverTests.cs      # 10 test methods
-│       └── IPromptIntelligenceEngineTests.cs # 14 test methods
+│       ├── IPromptIntelligenceEngineTests.cs # 16 test methods
+│       ├── ModeDetectorTests.cs          # 19 test methods
+│       └── PromptBuilderTests.cs         # 16 test methods
+│   └── DeveloperMemory.Tests/            # Consolidated test project
 │
 ├── Dockerfile                            # Multi-stage build
 ├── docker-compose.yml                    # 4 services: api, api-postgres, postgres, redis
@@ -140,12 +141,10 @@ OpenAIChatCompletionController
         ├── Validate request
         ├── Detect mode (ModeDetector)
         ├── Select model (auto or client-specified)
-        ├── Prepare enriched prompt (IPromptIntelligenceEngine → PromptIntelligenceService)
-        │     ├── Load developer profiles (ProfileService)
-        │     ├── Retrieve context (IMemoryRetriever → ContextRetrievalService)
-        │     │     ├── Search persistent memory (IMemoryService)
-        │     │     └── Search knowledge documents (KnowledgeService)
-        │     └── Build enriched request (PromptBuilder)
+        ├── Load developer profiles (ProfileService)  ← supplemental context
+        ├── Search knowledge documents (KnowledgeService)  ← supplemental context
+        ├── IPromptIntelligenceEngine.ProcessAsync(..., profiles, knowledge)
+        │     └── → PromptPackage (OptimizedPrompt includes ALL context)
         ├── Log token metrics (TokenEstimator + RequestLogger)
         ├── Forward to provider (IModelGateway → FreeLlmApiClient)
         │     ├── Non-streaming: await response, serialize
@@ -321,9 +320,10 @@ See [PROJECT_VISION.md](PROJECT_VISION.md) for the full vision.
 | `IProjectService → ProjectService` | Scoped | Application service |
 | `ProfileService` | Singleton | File-based, in-memory cache |
 | `KnowledgeService` | Singleton | File-based, in-memory index |
-| `PromptBuilder` | Singleton | Stateless prompt construction |
 | `IMemoryRetriever → ContextRetrievalService` | Singleton | Orchestrates memory + knowledge retrieval |
-| `IPromptIntelligenceEngine → PromptIntelligenceService` | Singleton | Orchestrates context retrieval + prompt assembly |
+| `IPromptIntelligenceEngine → PromptIntelligenceEngine` | Scoped | 6-stage intelligence pipeline (Application layer) |
+| `IMemoryRetrievalService → MemoryRetrievalService` | Scoped | Privacy-aware retrieval pipeline (Application layer) |
+| `IPromptAnalyzer → DeterministicPromptAnalyzer` | Scoped | Request analysis (Application layer) |
 | `IModelGateway → FreeLlmApiClient` | Transient | HTTP client for providers |
 | `FreeLlmApiClient` | Transient (HttpClient) | Concrete provider adapter |
 | `RequestLogger` | Singleton | Stateless logging |
@@ -419,13 +419,16 @@ tests/
 │   ├── InMemoryDbFixture.cs              # Shared EF Core InMemory fixture
 │   ├── MemoryRepositoryTests.cs          # 16 methods: CRUD, search, filtering
 │   └── ProjectRepositoryTests.cs         # 7 methods: CRUD, list
-└── DeveloperMemory.Api.Tests/
-    ├── IModelGatewayTests.cs             # 15 methods: gateway abstraction, contract
-    ├── IMemoryRetrieverTests.cs          # 10 methods: retrieval abstraction, contract
-    └── IPromptIntelligenceEngineTests.cs # 14 methods: engine abstraction, contract
+│   └── DeveloperMemory.Api.Tests/
+│       ├── IModelGatewayTests.cs             # 15 methods: gateway abstraction, contract
+│       ├── IMemoryRetrieverTests.cs          # 10 methods: retrieval abstraction, contract
+│       ├── IPromptIntelligenceEngineTests.cs # 16 methods: engine abstraction, contract
+│       ├── ModeDetectorTests.cs              # 19 methods: mode detection behavior
+│       └── PromptBuilderTests.cs             # 16 methods: prompt assembly behavior
+│   └── DeveloperMemory.Tests/                # Consolidated test project (many more tests)
 ```
 
-**Total: ~90 test methods** across 4 projects.
+**Total: ~133+ test methods** across 5 test projects.
 
 **Framework:** xUnit 2.9.3 with EF Core InMemory 10.0.0
 

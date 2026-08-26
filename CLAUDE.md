@@ -78,7 +78,6 @@ DeveloperMemory.Api.sln (at repository root)
 │       │   ├── ProfilesController.cs
 │       │   └── OpenAIChatCompletionController.cs
 │       ├── Services/
-│       │   ├── PromptBuilder.cs
 │       │   ├── ModeDetector.cs
 │       │   ├── KnowledgeService.cs
 │       │   ├── ProfileService.cs
@@ -420,15 +419,16 @@ tests/
 │   ├── MemoryRepositoryTests.cs          # 16 methods: CRUD, search, filtering
 │   └── ProjectRepositoryTests.cs         # 7 methods: CRUD, list
 │   └── DeveloperMemory.Api.Tests/
-│       ├── IModelGatewayTests.cs             # 15 methods: gateway abstraction, contract
-│       ├── IMemoryRetrieverTests.cs          # 10 methods: retrieval abstraction, contract
+│       ├── IModelGatewayTests.cs             # 18 methods: gateway abstraction, contract
+│       ├── IMemoryRetrieverTests.cs          # 13 methods: retrieval abstraction, contract
 │       ├── IPromptIntelligenceEngineTests.cs # 16 methods: engine abstraction, contract
 │       ├── ModeDetectorTests.cs              # 19 methods: mode detection behavior
-│       └── PromptBuilderTests.cs             # 16 methods: prompt assembly behavior
-│   └── DeveloperMemory.Tests/                # Consolidated test project (many more tests)
+│       ├── PromptCompositionContextTests.cs  # 8 methods: context composition behavior
+│       └── OpenAIChatCompletionControllerTests.cs # 7 methods: controller orchestration
+│   └── DeveloperMemory.Tests/                # Consolidated test project (419 methods)
 ```
 
-**Total: ~133+ test methods** across 5 test projects.
+**Total: ~549 test methods** across 5 test projects (81 Api + 10 Domain + 16 Application + 23 Infrastructure + 419 consolidated).
 
 **Framework:** xUnit 2.9.3 with EF Core InMemory 10.0.0
 

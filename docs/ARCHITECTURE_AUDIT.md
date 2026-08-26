@@ -108,7 +108,7 @@ Clean Architecture boundaries are properly enforced. The Domain project has zero
 **Gateway Services (8):**
 - `IMemoryRetriever` — Provider-independent retrieval abstraction for context assembly
 - `ContextRetrievalService` — Orchestrates persistent memory + knowledge document retrieval
-- `PromptBuilder` — Enriches requests with profiles, knowledge, and persistent memory. Appends context to system message. Preserves conversation history.
+- `DeterministicPromptComposer` — Provider-neutral prompt composition including profiles, knowledge, and intelligence context (replaces PromptBuilder)
 - `ModeDetector` — Heuristic detection of plan vs build mode from system prompt text
 - `KnowledgeService` — Markdown/YAML frontmatter parsing, keyword search with relevance scoring
 - `ProfileService` — Markdown/YAML frontmatter parsing, profile loading
@@ -190,7 +190,7 @@ All test projects use:
 
 | Area | Current State | Gap |
 |---|---|---|
-| **PromptBuilder** | Basic context assembly: append memory, profiles, knowledge to system message | No intent analysis, no context budget management, no conflict surfacing, no execution requirement resolution |
+| **PromptBuilder** | **Removed in Phase 12** — replaced by `DeterministicPromptComposer` in the `IPromptIntelligenceEngine` pipeline | Context assembly now handled by engine with profile/knowledge support |
 | **ModeDetector** | Heuristic keyword matching in system prompt text | No real intent analysis; misclassifies edge cases; specific to Cline-style prompts |
 | **Keyword search** | EF Core Contains() on Title, Content, TagsJson | No semantic understanding, no TF-IDF/BM25, no vector search |
 | **FreeLlmApiClient** | Implements IModelGateway behind provider abstraction | Currently the only provider implementation; swapping requires only DI registration change |
@@ -201,8 +201,7 @@ All test projects use:
 
 | Area | Issue | Priority |
 |---|---|---|
-| **Gateway services in API project** | PromptBuilder, ModeDetector, FreeLlmApiClient live in Api project. Conceptually belong in Application or Infrastructure layers. | Medium |
-| **Gateway services in API project** | PromptBuilder, ModeDetector, FreeLlmApiClient live in Api project. Conceptually belong in Application or Infrastructure layers. | Medium |
+| **Gateway services in API project** | ModeDetector, FreeLlmApiClient live in Api project. Conceptually belong in Application or Infrastructure layers. | Medium |
 | **IPromptIntelligenceEngine (basic)** | Interface and basic orchestration implemented (Phase 7). Full intent analysis, context budget, conflict detection still target architecture. | Medium (target) |
 | **No IMemoryIntelligenceService** | No automatic memory evaluation, duplicate detection, or contradiction analysis. | Medium (target) |
 | **No authentication/authorization** | API is unprotected. CORS is wide open. | Medium |
@@ -307,7 +306,7 @@ Optional Selective Memory Capture
 **Changes:**
 - Verify `dotnet build` succeeds across all projects
 - Verify `dotnet test` passes for all 3 test projects
-- Add unit tests for `PromptBuilder` (context assembly logic)
+- ✅ PromptBuilder removed; replaced by DeterministicPromptComposer in IPromptIntelligenceEngine pipeline
 - Add unit tests for `ModeDetector` (mode detection heuristics)
 - Add integration tests for `MemoryController` endpoints
 - Add integration tests for `ProjectsController` endpoints

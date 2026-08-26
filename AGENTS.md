@@ -55,7 +55,6 @@ DeveloperMemory.Api.sln (at repository root)
 │   │   │   ├── ProfilesController.cs       # /api/Profiles (file-based loading)
 │   │   │   └── OpenAIChatCompletionController.cs  # /v1/chat/completions (gateway)
 │   │   ├── Services/
-│   │   │   ├── PromptBuilder.cs            # Enriches OpenAI requests with context
 │   │   │   ├── ModeDetector.cs             # Heuristic plan vs build detection
 │   │   │   ├── KnowledgeService.cs         # Markdown document parsing + search
 │   │   │   ├── ProfileService.cs           # Markdown profile parsing
@@ -99,7 +98,8 @@ DeveloperMemory.Api.sln (at repository root)
 │       ├── IMemoryRetrieverTests.cs         # 10 test methods (retrieval abstraction)
 │       ├── IPromptIntelligenceEngineTests.cs # 16 test methods (engine abstraction)
 │       ├── ModeDetectorTests.cs             # 19 test methods (mode detection)
-│       └── PromptBuilderTests.cs            # 16 test methods (prompt assembly)
+│       ├── PromptCompositionContextTests.cs  # 8 test methods (context composition)
+│       └── OpenAIChatCompletionControllerTests.cs # 7 test methods (controller orchestration)
 │   └── DeveloperMemory.Tests/               # Consolidated test project (many more tests)
 │
 ├── Dockerfile                              # Multi-stage build                              # Multi-stage build
@@ -171,7 +171,7 @@ DeveloperMemory.Api.sln (at repository root)
 
 1. **Two memory systems coexist:** The legacy `KnowledgeService` (file-based Markdown) and the persistent `MemoryService` (PostgreSQL). Both are orchestrated behind `IMemoryRetriever` by `ContextRetrievalService`. Do not remove either without understanding the impact.
 
-2. **Tests exist across 5 projects:** `tests/DeveloperMemory.Domain.Tests/` (12 methods), `tests/DeveloperMemory.Application.Tests/` (16 methods), `tests/DeveloperMemory.Infrastructure.Tests/` (23 methods), `tests/DeveloperMemory.Api.Tests/` (~76 methods), `tests/DeveloperMemory.Tests/` (consolidated, many more). Total: ~133+ test methods. No integration tests for controllers or services yet.
+2. **Tests exist across 5 projects:** `tests/DeveloperMemory.Domain.Tests/` (10 methods), `tests/DeveloperMemory.Application.Tests/` (16 methods), `tests/DeveloperMemory.Infrastructure.Tests/` (23 methods), `tests/DeveloperMemory.Api.Tests/` (81 methods), `tests/DeveloperMemory.Tests/` (consolidated, 419 methods). Total: ~549 test methods. No integration tests for controllers or services yet.
 
 3. **Token estimates are approximate:** ~4 chars/token heuristic. For billing-accurate counts, check `provider_tokens` in the response.
 

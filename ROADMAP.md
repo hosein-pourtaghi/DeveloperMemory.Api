@@ -37,7 +37,7 @@ The persistent memory system, Clean Architecture foundation, OpenAI-compatible g
 
 - [ ] Verify `dotnet build` succeeds across all projects
 - [ ] Verify `dotnet test` passes for all 4 test projects (~90 methods)
-- [ ] Add unit tests for `PromptBuilder` (context assembly, message preservation)
+- [x] PromptBuilder removed — replaced by DeterministicPromptComposer in IPromptIntelligenceEngine
 - [ ] Add unit tests for `ModeDetector` (plan/build/unknown detection)
 - [ ] Add integration tests for `MemoryController` endpoints
 - [ ] Add integration tests for `ProjectsController` endpoints

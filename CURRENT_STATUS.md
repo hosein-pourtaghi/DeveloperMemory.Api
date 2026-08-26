@@ -48,11 +48,10 @@ DeveloperMemory.Api.sln (at repository root)
 │   │   └── DI: ServiceCollectionExtensions
 │   │
 │   └── DeveloperMemory.Api/             (44 files)
-│       ├── Abstractions/: IModelGateway, DownstreamProviderException, IMemoryRetriever, MemoryRetrievalResult, IPromptIntelligenceEngine, PromptIntelligenceResult, ManagedStream
-│       ├── Controllers: 5 (Memory, Projects, Knowledge, Profiles, OpenAIChatCompletion)
-│       ├── Services: 9 (PromptBuilder, ModeDetector, KnowledgeService, ProfileService,
-│       │               FreeLlmApiClient, TokenEstimator, RequestLogger, ContextRetrievalService,
-│       │               PromptIntelligenceService)
+│       ├── Abstractions/: IModelGateway, DownstreamProviderException, IMemoryRetriever, MemoryRetrievalResult, ManagedStream
+│       ├── Controllers: 7 (Memory, Projects, Knowledge, Profiles, OpenAIChatCompletion, PromptEvaluation, PromptIntelligence)
+│       ├── Services: 8 (ModeDetector, KnowledgeService, ProfileService,
+│       │               FreeLlmApiClient, TokenEstimator, RequestLogger, ContextRetrievalService)
 │       ├── Models: 6 (OpenAI types, KnowledgeDocument, DeveloperProfile, etc.)
 │       ├── Infrastructure: Configuration, Middleware (2)
 │       ├── Knowledge/: 2 markdown documents
@@ -65,10 +64,14 @@ DeveloperMemory.Api.sln (at repository root)
 │   │   └── MemoryServiceTests.cs
 │   ├── DeveloperMemory.Infrastructure.Tests/ (23 test methods)
 │   │   ├── InMemoryDbFixture.cs + MemoryRepositoryTests.cs
-│   │   └── ProjectRepositoryTests.cs│       └── DeveloperMemory.Api.Tests/           (~39 test methods)
+│   │   └── ProjectRepositoryTests.cs│   └── DeveloperMemory.Api.Tests/           (81 test methods)
 │       ├── IModelGatewayTests.cs
 │       ├── IMemoryRetrieverTests.cs
-│       └── IPromptIntelligenceEngineTests.cs
+│       ├── IPromptIntelligenceEngineTests.cs
+│       ├── ModeDetectorTests.cs
+│       ├── PromptCompositionContextTests.cs
+│       └── OpenAIChatCompletionControllerTests.cs
+│   └── DeveloperMemory.Tests/               (419 test methods, consolidated)
 │
 ├── Dockerfile                      # Multi-stage build (sdk:10.0 → aspnet:10.0)
 ├── docker-compose.yml              # 4 services: api, api-postgres, postgres, redis
@@ -108,7 +111,7 @@ DeveloperMemory.Api.sln (at repository root)
 | **KnowledgeController** | Api | CRUD at `/api/Knowledge` with search, reindex |
 | **ProfilesController** | Api | List and load at `/api/Profiles` |
 | **FreeLlmApiClient** | Api | HTTP client for OpenAI-compatible providers; streaming + non-streaming; model resolution; model listing |
-| **PromptBuilder** | Api | Enriches requests with profiles, knowledge, and persistent memory; preserves conversation history |
+| **DeterministicPromptComposer** | Application | Provider-neutral prompt composition including profiles, knowledge, and intelligence context |
 | **ModeDetector** | Api | Heuristic detection of plan vs build mode from system prompt content |
 | **KnowledgeService** | Api | Markdown/YAML frontmatter parsing, keyword search with relevance scoring, document creation |
 | **ProfileService** | Api | Markdown/YAML frontmatter parsing, profile loading |
@@ -117,9 +120,9 @@ DeveloperMemory.Api.sln (at repository root)
 | **IMemoryRetriever** | Api | Provider-independent abstraction for retrieving memory and knowledge context |
 | **MemoryRetrievalResult** | Api | Combined result type holding memories + knowledge search results |
 | **ContextRetrievalService** | Api | Implements IMemoryRetriever; orchestrates persistent memory + knowledge document retrieval |
-| **IPromptIntelligenceEngine** | Api | Core prompt intelligence boundary; single method PreparePromptAsync |
-| **PromptIntelligenceResult** | Api | Result type with EnrichedRequest + SearchQuery metadata |
-| **PromptIntelligenceService** | Api | Implements IPromptIntelligenceEngine; orchestrates profile loading, context retrieval, prompt assembly |
+| **IPromptIntelligenceEngine** | Application | Core prompt intelligence boundary; ProcessAsync / ProcessWithContext → PromptPackage |
+| **PromptIntelligenceEngine** | Application | 6-stage pipeline: analysis → retrieval → constraints → assembly → composition → optimization |
+| **PromptPackage** | Domain | Provider-neutral intelligence package: OptimizedPrompt + Analysis + Metadata + degradation contract |
 | **ManagedStream** | Api | Internal stream wrapper for provider stream lifecycle management |
 | **GlobalExceptionMiddleware** | Api | OpenAI-compatible error responses for /v1/*, RFC7807 for others |
 | **RequestLoggingMiddleware** | Api | Diagnostic request body logging for /v1/* POST endpoints |
@@ -135,14 +138,14 @@ DeveloperMemory.Api.sln (at repository root)
 | **Knowledge Documents** | Api/Knowledge | 2 Markdown files: ai-agent-rules.md, code-generation-rules.md |
 | **Developer Profiles** | Api/Profiles | 2 Markdown files: developer-profile.md, development-preferences.md |
 
-### ✅ Test Infrastructure (4 Projects, ~90 Methods)
+### ✅ Test Infrastructure (5 Projects, ~549 Methods)
 
 | Test Project | Methods | Focus |
 |---|---|---|
 | **DeveloperMemory.Domain.Tests** | 12 | MemoryEntry defaults, tags, lifecycle transitions, scopes, states, expiration |
 | **DeveloperMemory.Application.Tests** | 16 | MemoryService CRUD, project scope validation, supersession, expiration, stats |
 | **DeveloperMemory.Infrastructure.Tests** | 23 | MemoryRepository (16) + ProjectRepository (7) with EF Core InMemory |
-| **DeveloperMemory.Api.Tests** | ~39 | IModelGateway (15) + IMemoryRetriever (10) + IPromptIntelligenceEngine (14) |
+| **DeveloperMemory.Api.Tests** | 81 | IModelGateway (18) + IMemoryRetriever (13) + IPromptIntelligenceEngine (16) + ModeDetector (19) + PromptComposition (8) + Controller (7) |
 
 **Framework:** xUnit 2.9.3 + EF Core InMemory 10.0.0
 **Static review:** Test code appears correct. Namespace consistency, reference direction, and constructor injection all verified.
@@ -211,5 +214,7 @@ DeveloperMemory.Api.sln (at repository root)
 5. **No streaming token counts** — Token estimates logged for non-streaming only.
 6. **CORS wide open** — Development only; needs lockdown for production.
 7. **No CI/CD** — No automated build/test pipeline.
-8. **Gateway services in API project** — Some services (PromptBuilder, ModeDetector, FreeLlmApiClient) are in the API project rather than Application/Infrastructure layers. This is a known architectural evolution point.
+8. **No authentication** — API is unprotected. CORS is the only access control.
+9. **Prompt injection risk** — Profile and knowledge content inserted into system prompts without sanitization.
+8. **Gateway services in API project** — Some services (ModeDetector, FreeLlmApiClient) are in the API project rather than Application/Infrastructure layers. This is a known architectural evolution point.
 9. **Redis provisioned but unused** — Available in docker-compose but not integrated in application code.

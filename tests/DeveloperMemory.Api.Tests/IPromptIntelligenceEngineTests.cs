@@ -1,148 +1,185 @@
 using Xunit;
-using DeveloperMemory.Api.Abstractions;
-using DeveloperMemory.Api.Models;
-using DeveloperMemory.Application.DTOs;
+using DeveloperMemory.Application.Contracts;
+using DeveloperMemory.Domain.Entities;
 using DeveloperMemory.Domain.Enums;
 
 namespace DeveloperMemory.Api.Tests;
 
 /// <summary>
-/// In-memory implementation of IPromptIntelligenceEngine for testing consumers.
-/// Demonstrates that consumers can depend on the abstraction.
+/// In-memory stub of IPromptIntelligenceEngine for testing consumers.
+/// Verifies that the abstraction can be depended upon and substituted.
 /// </summary>
-public class InMemoryPromptIntelligenceEngine : IPromptIntelligenceEngine
+public class StubPromptIntelligenceEngine : IPromptIntelligenceEngine
 {
-    public OpenAIChatCompletionRequest? LastRequest { get; private set; }
-    public List<CancellationToken> ReceivedTokens { get; } = [];
-    public PromptIntelligenceResult ResultToReturn { get; set; } = new()
+    public string? LastUserRequest { get; private set; }
+    public string? LastUserId { get; private set; }
+    public Guid? LastProjectId { get; private set; }
+    public string? LastWorkspaceId { get; private set; }
+    public int LastTokenBudget { get; private set; }
+    public PromptPackage ResultToReturn { get; set; } = new()
     {
-        EnrichedRequest = new OpenAIChatCompletionRequest
-        {
-            Model = "test-model",
-            Messages = [new Message { Role = "system", Content = "You are a helpful assistant." }]
-        },
-        SearchQuery = "test query"
+        Status = PromptIntelligenceStatus.Full,
+        OptimizedPrompt = "Stub optimized prompt",
+        OriginalRequest = string.Empty
     };
 
-    public Task<PromptIntelligenceResult> PreparePromptAsync(
-        OpenAIChatCompletionRequest request,
+    public Task<PromptPackage> ProcessAsync(
+        string userRequest,
+        string userId,
+        Guid? projectId = null,
+        string? workspaceId = null,
+        int contextTokenBudget = 4000,
         CancellationToken ct = default)
     {
-        LastRequest = request;
-        ReceivedTokens.Add(ct);
+        LastUserRequest = userRequest;
+        LastUserId = userId;
+        LastProjectId = projectId;
+        LastWorkspaceId = workspaceId;
+        LastTokenBudget = contextTokenBudget;
+
+        ResultToReturn.OriginalRequest = userRequest;
         return Task.FromResult(ResultToReturn);
+    }
+
+    public PromptPackage ProcessWithContext(string userRequest, PromptContext context)
+    {
+        LastUserRequest = userRequest;
+
+        return new PromptPackage
+        {
+            OriginalRequest = userRequest,
+            Status = PromptIntelligenceStatus.Full,
+            OptimizedPrompt = "Stub from context"
+        };
     }
 }
 
 /// <summary>
 /// Behavioral tests verifying the IPromptIntelligenceEngine abstraction
-/// works correctly through an in-memory implementation.
+/// works correctly through a stub implementation.
 /// </summary>
-public class IPromptIntelligenceEngineTests
+public class IPromptIntelligenceEngineBehaviorTests
 {
     [Fact]
-    public async Task PreparePromptAsync_ReturnsEnrichedRequest()
+    public async Task ProcessAsync_ReturnsPromptPackage()
     {
-        var engine = new InMemoryPromptIntelligenceEngine();
+        var engine = new StubPromptIntelligenceEngine();
 
-        var request = new OpenAIChatCompletionRequest
-        {
-            Model = "test-model",
-            Messages = [new Message { Role = "user", Content = "Hello" }]
-        };
-
-        var result = await engine.PreparePromptAsync(request);
+        var result = await engine.ProcessAsync("test request", "user-1");
 
         Assert.NotNull(result);
-        Assert.NotNull(result.EnrichedRequest);
-        Assert.Equal("test query", result.SearchQuery);
+        Assert.Equal(PromptIntelligenceStatus.Full, result.Status);
     }
 
     [Fact]
-    public async Task PreparePromptAsync_RecordsRequest()
+    public async Task ProcessAsync_RecordsParameters()
     {
-        var engine = new InMemoryPromptIntelligenceEngine();
+        var engine = new StubPromptIntelligenceEngine();
+        var projectId = Guid.NewGuid();
 
-        var request = new OpenAIChatCompletionRequest
-        {
-            Model = "test-model",
-            Messages = [new Message { Role = "user", Content = "Hello" }]
-        };
+        await engine.ProcessAsync("request", "user-1", projectId, "ws-1", 8000);
 
-        await engine.PreparePromptAsync(request);
-
-        Assert.Same(request, engine.LastRequest);
+        Assert.Equal("request", engine.LastUserRequest);
+        Assert.Equal("user-1", engine.LastUserId);
+        Assert.Equal(projectId, engine.LastProjectId);
+        Assert.Equal("ws-1", engine.LastWorkspaceId);
+        Assert.Equal(8000, engine.LastTokenBudget);
     }
 
     [Fact]
-    public async Task PreparePromptAsync_PassesCancellationToken()
+    public async Task ProcessAsync_PreservesOriginalRequest()
     {
-        var engine = new InMemoryPromptIntelligenceEngine();
+        var engine = new StubPromptIntelligenceEngine();
 
-        using var cts = new CancellationTokenSource();
-        var request = new OpenAIChatCompletionRequest
-        {
-            Model = "test-model",
-            Messages = [new Message { Role = "user", Content = "Hello" }]
-        };
+        var result = await engine.ProcessAsync("my request", "user-1");
 
-        await engine.PreparePromptAsync(request, cts.Token);
-
-        Assert.Single(engine.ReceivedTokens);
-        Assert.Equal(cts.Token, engine.ReceivedTokens[0]);
+        Assert.Equal("my request", result.OriginalRequest);
     }
 
     [Fact]
-    public async Task PreparePromptAsync_CanReturnCustomResult()
+    public async Task ProcessAsync_CanReturnCustomPackage()
     {
-        var customResult = new PromptIntelligenceResult
+        var customPackage = new PromptPackage
         {
-            EnrichedRequest = new OpenAIChatCompletionRequest
-            {
-                Model = "custom-model",
-                Messages =
-                [
-                    new Message { Role = "system", Content = "Custom context" },
-                    new Message { Role = "user", Content = "Hello" }
-                ]
-            },
-            SearchQuery = "custom query"
+            Status = PromptIntelligenceStatus.Degraded,
+            OptimizedPrompt = "Degraded prompt",
+            Warnings = ["retrieval_unavailable"]
         };
 
-        var engine = new InMemoryPromptIntelligenceEngine
+        var engine = new StubPromptIntelligenceEngine
         {
-            ResultToReturn = customResult
+            ResultToReturn = customPackage
         };
 
-        var request = new OpenAIChatCompletionRequest
-        {
-            Model = "test-model",
-            Messages = [new Message { Role = "user", Content = "Hello" }]
-        };
+        var result = await engine.ProcessAsync("request", "user-1");
 
-        var result = await engine.PreparePromptAsync(request);
+        Assert.Equal(PromptIntelligenceStatus.Degraded, result.Status);
+        Assert.Contains("retrieval_unavailable", result.Warnings);
+        Assert.Equal("Degraded prompt", result.OptimizedPrompt);
+    }
 
-        Assert.Equal("custom-model", result.EnrichedRequest.Model);
-        Assert.Equal(2, result.EnrichedRequest.Messages.Count);
-        Assert.Equal("Custom context", result.EnrichedRequest.Messages[0].Content);
-        Assert.Equal("custom query", result.SearchQuery);
+    [Fact]
+    public async Task ProcessAsync_DefaultParametersWork()
+    {
+        var engine = new StubPromptIntelligenceEngine();
+
+        var result = await engine.ProcessAsync("request", "user-1");
+
+        Assert.Null(engine.LastProjectId);
+        Assert.Null(engine.LastWorkspaceId);
+        Assert.Equal(4000, engine.LastTokenBudget);
+    }
+
+    [Fact]
+    public void ProcessWithContext_ReturnsPromptPackage()
+    {
+        var engine = new StubPromptIntelligenceEngine();
+        var context = new PromptContext();
+
+        var result = engine.ProcessWithContext("test request", context);
+
+        Assert.NotNull(result);
+        Assert.Equal("test request", result.OriginalRequest);
+        Assert.Equal(PromptIntelligenceStatus.Full, result.Status);
+    }
+
+    [Fact]
+    public void ProcessWithContext_RecordsUserRequest()
+    {
+        var engine = new StubPromptIntelligenceEngine();
+        var context = new PromptContext();
+
+        engine.ProcessWithContext("my request", context);
+
+        Assert.Equal("my request", engine.LastUserRequest);
     }
 }
 
 /// <summary>
-/// Contract tests verifying IPromptIntelligenceEngine interface structure
-/// and that PromptIntelligenceService correctly implements the interface.
+/// Contract tests verifying IPromptIntelligenceEngine interface structure.
+/// These tests verify the interface exists and has the expected shape without
+/// requiring actual implementation execution.
 /// </summary>
 public class IPromptIntelligenceEngineContractTests
 {
     [Fact]
-    public void IPromptIntelligenceEngine_HasPreparePromptAsyncMethod()
+    public void IPromptIntelligenceEngine_HasProcessAsyncMethod()
     {
         var interfaceType = typeof(IPromptIntelligenceEngine);
-        var method = interfaceType.GetMethod(nameof(IPromptIntelligenceEngine.PreparePromptAsync));
+        var method = interfaceType.GetMethod(nameof(IPromptIntelligenceEngine.ProcessAsync));
 
         Assert.NotNull(method);
-        Assert.Equal(typeof(Task<PromptIntelligenceResult>), method!.ReturnType);
+        Assert.Equal(typeof(Task<PromptPackage>), method!.ReturnType);
+    }
+
+    [Fact]
+    public void IPromptIntelligenceEngine_HasProcessWithContextMethod()
+    {
+        var interfaceType = typeof(IPromptIntelligenceEngine);
+        var method = interfaceType.GetMethod(nameof(IPromptIntelligenceEngine.ProcessWithContext));
+
+        Assert.NotNull(method);
+        Assert.Equal(typeof(PromptPackage), method!.ReturnType);
     }
 
     [Fact]
@@ -155,57 +192,68 @@ public class IPromptIntelligenceEngineContractTests
             foreach (var param in method.GetParameters())
             {
                 Assert.False(param.ParameterType.Name.Contains("DbContext"),
-                    $"IPromptIntelligenceEngine parameter {param.Name} should not expose DbContext");
+                    $"Parameter {param.Name} should not expose DbContext");
                 Assert.False(param.ParameterType.Name.Contains("HttpClient"),
-                    $"IPromptIntelligenceEngine parameter {param.Name} should not expose HttpClient");
+                    $"Parameter {param.Name} should not expose HttpClient");
                 Assert.False(param.ParameterType.Name.Contains("HttpResponseMessage"),
-                    $"IPromptIntelligenceEngine parameter {param.Name} should not expose HttpResponseMessage");
+                    $"Parameter {param.Name} should not expose HttpResponseMessage");
                 Assert.False(param.ParameterType.Name.Contains("Npgsql"),
-                    $"IPromptIntelligenceEngine parameter {param.Name} should not expose Npgsql types");
+                    $"Parameter {param.Name} should not expose Npgsql types");
             }
         }
     }
 
     [Fact]
-    public void PromptIntelligenceService_ImplementsIPromptIntelligenceEngine()
+    public void PromptIntelligenceEngine_ImplementsIPromptIntelligenceEngine()
     {
-        var serviceType = typeof(Services.PromptIntelligenceService);
+        var engineType = typeof(Services.PromptIntelligence.PromptIntelligenceEngine);
         var interfaceType = typeof(IPromptIntelligenceEngine);
 
-        Assert.True(interfaceType.IsAssignableFrom(serviceType),
-            "PromptIntelligenceService should implement IPromptIntelligenceEngine");
+        Assert.True(interfaceType.IsAssignableFrom(engineType),
+            "PromptIntelligenceEngine should implement IPromptIntelligenceEngine");
     }
 
     [Fact]
-    public void PromptIntelligenceResult_HasExpectedProperties()
+    public void StubPromptIntelligenceEngine_ImplementsIPromptIntelligenceEngine()
     {
-        var resultType = typeof(PromptIntelligenceResult);
-
-        var enrichedRequest = resultType.GetProperty(nameof(PromptIntelligenceResult.EnrichedRequest));
-        var searchQuery = resultType.GetProperty(nameof(PromptIntelligenceResult.SearchQuery));
-
-        Assert.NotNull(enrichedRequest);
-        Assert.NotNull(searchQuery);
-        Assert.Equal(typeof(OpenAIChatCompletionRequest), enrichedRequest!.PropertyType);
-        Assert.Equal(typeof(string), searchQuery!.PropertyType);
-    }
-
-    [Fact]
-    public void PromptIntelligenceResult_SearchQuery_DefaultsToEmpty()
-    {
-        var result = new PromptIntelligenceResult();
-
-        Assert.NotNull(result.EnrichedRequest);
-        Assert.Equal(string.Empty, result.SearchQuery);
-    }
-
-    [Fact]
-    public void InMemoryPromptIntelligenceEngine_ImplementsIPromptIntelligenceEngine()
-    {
-        var type = typeof(InMemoryPromptIntelligenceEngine);
+        var stubType = typeof(StubPromptIntelligenceEngine);
         var interfaceType = typeof(IPromptIntelligenceEngine);
 
-        Assert.True(interfaceType.IsAssignableFrom(type),
-            "InMemoryPromptIntelligenceEngine should implement IPromptIntelligenceEngine");
+        Assert.True(interfaceType.IsAssignableFrom(stubType),
+            "StubPromptIntelligenceEngine should implement IPromptIntelligenceEngine");
+    }
+
+    [Fact]
+    public void PromptPackage_HasExpectedProperties()
+    {
+        var packageType = typeof(PromptPackage);
+
+        Assert.NotNull(packageType.GetProperty(nameof(PromptPackage.OriginalRequest)));
+        Assert.NotNull(packageType.GetProperty(nameof(PromptPackage.OptimizedPrompt)));
+        Assert.NotNull(packageType.GetProperty(nameof(PromptPackage.Status)));
+        Assert.NotNull(packageType.GetProperty(nameof(PromptPackage.Warnings)));
+        Assert.NotNull(packageType.GetProperty(nameof(PromptPackage.Analysis)));
+    }
+
+    [Fact]
+    public void PromptPackage_Status_DefaultsToFull()
+    {
+        var package = new PromptPackage();
+        Assert.Equal(PromptIntelligenceStatus.Full, package.Status);
+    }
+
+    [Fact]
+    public void PromptPackage_Warnings_DefaultsToEmpty()
+    {
+        var package = new PromptPackage();
+        Assert.NotNull(package.Warnings);
+        Assert.Empty(package.Warnings);
+    }
+
+    [Fact]
+    public void PromptPackage_OriginalRequestPreserved_DefaultsToTrue()
+    {
+        var package = new PromptPackage();
+        Assert.True(package.OriginalRequestPreserved);
     }
 }

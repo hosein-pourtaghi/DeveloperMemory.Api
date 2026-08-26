@@ -3,6 +3,7 @@ using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using DeveloperMemory.Api.Abstractions;
 using DeveloperMemory.Api.Services;
 using DeveloperMemory.Api.Infrastructure.Configuration;
 using DeveloperMemory.Api.Infrastructure.Middleware;
@@ -133,7 +134,17 @@ builder.Services.AddSingleton<ProfileService>();
 builder.Services.AddSingleton<KnowledgeService>();
 builder.Services.AddSingleton<PromptBuilder>();
 builder.Services.AddSingleton<RequestLogger>();
+
+// Register the model gateway: FreeLlmApiClient is the current provider-specific implementation.
+// To swap providers, change this registration to a different IModelGateway implementation.
 builder.Services.AddHttpClient<FreeLlmApiClient>();
+builder.Services.AddSingleton<IModelGateway>(sp => sp.GetRequiredService<FreeLlmApiClient>());
+
+// Register the memory retriever: ContextRetrievalService orchestrates persistent memory
+// and knowledge document retrieval behind the IMemoryRetriever abstraction.
+// To change retrieval strategy (e.g., add vector search), replace this registration.
+builder.Services.AddSingleton<IMemoryRetriever, ContextRetrievalService>();
+
 
 // Add CORS
 builder.Services.AddCors(options =>

@@ -1,5 +1,70 @@
 # Changelog
 
+## [7.0.0] - 2026-08-26
+
+### Phase 7: Prompt Intelligence Engine Foundation
+
+- **Introduced `IPromptIntelligenceEngine` interface** (`src/DeveloperMemory.Api/Abstractions/IPromptIntelligenceEngine.cs`) — core architectural boundary for prompt/context intelligence with single method `PreparePromptAsync`
+- **Created `PromptIntelligenceResult`** (`src/DeveloperMemory.Api/Abstractions/PromptIntelligenceResult.cs`) — result type containing `EnrichedRequest` and `SearchQuery` metadata
+- **Implemented `PromptIntelligenceService`** (`src/DeveloperMemory.Api/Services/PromptIntelligenceService.cs`) — orchestrates profile loading, context retrieval (via `IMemoryRetriever`), and prompt assembly (via `PromptBuilder`)
+- **Created `ManagedStream`** (`src/DeveloperMemory.Api/Abstractions/ManagedStream.cs`) — internal stream wrapper managing provider stream lifecycle
+- **`OpenAIChatCompletionController` simplified** — delegates context retrieval and prompt assembly to `IPromptIntelligenceEngine`; no longer directly depends on `ProfileService`, `PromptBuilder`, or `IMemoryRetriever`
+- **DI registration updated** — `IPromptIntelligenceEngine` resolves to `PromptIntelligenceService`; changing intelligence behavior requires only a DI change
+- **Added `IPromptIntelligenceEngineTests.cs`** with behavioral tests (via `InMemoryPromptIntelligenceEngine`) and contract/reflection tests (14 methods)
+- **Preserved existing behavior** — all gateway functionality, streaming, model selection, mode detection, token logging unchanged
+- **Documentation updated** across CURRENT_STATUS, ROADMAP, CLAUDE, AGENTS, CHANGELOG
+
+## [4.0.0] - 2026-08-26
+
+### Phase 4: Provider Abstraction (IModelGateway)
+
+- **Introduced `IModelGateway` interface** (`src/DeveloperMemory.Api/Abstractions/IModelGateway.cs`) — provider-independent abstraction for LLM/model access
+- **`FreeLlmApiClient` now implements `IModelGateway`** — current OpenAI-compatible adapter behind the abstraction
+- **`DownstreamProviderException` moved** to `DeveloperMemory.Api.Abstractions` namespace
+- **`OpenAIChatCompletionController` depends on `IModelGateway`** — no longer directly coupled to `FreeLlmApiClient`
+- **DI registration updated** — `IModelGateway` resolves to `FreeLlmApiClient`; swapping providers requires only a DI change in `Program.cs`
+- **Added `DeveloperMemory.Api.Tests`** project with 15 test methods covering:
+  - `IModelGateway` contract behavior (via `InMemoryModelGateway`)
+  - `FreeLlmApiClient` interface compliance
+  - `DownstreamProviderException` behavior
+- **Solution file updated** to include the new test project (4 test projects total)
+- **Documentation updated** across CURRENT_STATUS, ROADMAP, CLAUDE, AGENTS, CHANGELOG
+
+## [5.0.0] - 2026-08-26
+
+### Phase 5: Retrieval Abstraction (IMemoryRetriever)
+
+- **Introduced `IMemoryRetriever` interface** (`src/DeveloperMemory.Api/Abstractions/IMemoryRetriever.cs`) — provider-independent abstraction for retrieving relevant memory and knowledge context
+- **Created `MemoryRetrievalResult`** (`src/DeveloperMemory.Api/Abstractions/MemoryRetrievalResult.cs`) — combined result type holding `List<MemoryDto>` and `List<SearchResult>`
+- **Implemented `ContextRetrievalService`** (`src/DeveloperMemory.Api/Services/ContextRetrievalService.cs`) — orchestrates persistent memory search (via `IMemoryService`) and knowledge document search (via `KnowledgeService`) behind the abstraction
+- **`OpenAIChatCompletionController` now depends on `IMemoryRetriever`** — controller no longer directly depends on `KnowledgeService` or `IMemoryService` for retrieval; retrieval is a single call returning combined context
+- **DI registration updated** — `IMemoryRetriever` resolves to `ContextRetrievalService`; changing retrieval strategy requires only a DI change
+- **Added `IMemoryRetrieverTests.cs`** with behavioral tests (via `InMemoryMemoryRetriever`) and contract/reflection tests
+- **Preserved existing behavior** — memory retrieval error tolerance, knowledge search scoring, and prompt assembly all unchanged
+- **Documentation updated** across CURRENT_STATUS, ROADMAP, CHANGELOG
+
+---
+
+## [3.1.0] - 2026-08-26
+
+### Architecture Audit & Documentation Correction
+
+- **Major documentation corrections:** Previous documentation contained significant inaccuracies:
+  - Claimed "Docker does not exist" — Dockerfile, docker-compose.yml, and .dockerignore all present and functional
+  - Claimed "1 test project" — Actually 3 test projects with 51 test methods total
+  - Claimed "no tests exist" — 51 xUnit test methods across Domain, Application, and Infrastructure test projects
+  - Claimed "no solution file" — `DeveloperMemory.Api.sln` exists at repository root
+  - Failed to document pgvector in docker-compose PostgreSQL image
+  - Failed to document Redis service in docker-compose
+  - Claimed tests directory was empty — contains 3 complete test project directories
+- **Architecture Audit document added** (`docs/ARCHITECTURE_AUDIT.md`) — comprehensive gap analysis between current implementation and target Memory Intelligence vision
+- **All 8 documentation files updated** to match actual repository state
+- **Docker documentation added** to README, CLAUDE.md, AGENTS.md, CURRENT_STATUS.md
+- **Test documentation corrected** across all files — 3 projects, 51 methods accurately documented
+- **pgvector and Redis** infrastructure documented as available but not yet integrated
+
+---
+
 ## [3.0.0] - 2026-08-25
 
 ### Comprehensive Documentation & Vision Alignment Update
@@ -12,88 +77,36 @@
   - Documentation previously listed implemented features (memory lifecycle, project model, supersession) as "future V2" work
 - **Established canonical project identity** as "Persistent Intelligent AI Memory Layer / Memory Intelligence Gateway" across all documents
 - **Separated implemented vs planned** capabilities clearly in all documentation
-- **Updated PROJECT_VISION.md** as the canonical vision document with full architecture, principles, and target direction
-- **Updated README.md** with complete API reference, architecture summary, and accurate current capabilities
-- **Updated CURRENT_STATUS.md** with verified component inventory across all4 projects and test project
-- **Updated ROADMAP.md** to remove already-implemented features from future phases, accurate next steps
-- **Updated CLAUDE.md** with correct 4-project structure, dependency injection table, domain model, and coding standards
-- **Updated AGENTS.md** with accurate architecture rules, project structure, and extension patterns
-- **Updated KNOWLEDGE_FORMAT.md** to accurately describe supported fields and relationship to persistent memory
-- **Updated DOCUMENTATION.md** as the documentation index with hierarchy diagram
+- **Added ROADMAP.md** with accurate phase tracking
+- **Added KNOWLEDGE_FORMAT.md** with frontmatter reference
+- **Added DOCUMENTATION.md** as documentation index
+- **Updated CHANGELOG.md** with version history
 
-## [2.2.0] - 2026-08-24
+---
 
-### Repository Audit & Documentation Alignment
-- **Full codebase audit**: Verified actual implementation state (contrary to previous documentation-only claims)
-- **Implementation inventory**: All 22 source files catalogued with working/partial/broken classification
-- **Code quality fixes**:
-  - Removed unused and misleading `BuildModeIndicators` array in `ModeDetector`
-  - Fixed frontmatter parser to handle `name` as alias for `title` in knowledge documents
-  - Fixed YAML escaping in `CreateDocumentAsync` for titles with special characters
+## [2.0.0] - 2026-08-24
 
-### New Documentation
-- **PROJECT_VISION.md**: Mission, problem statement, target users, core concepts, long-term direction
-- **CURRENT_STATUS.md**: Actual implementation inventory based on code audit
-- **ROADMAP.md**: Completed work, next steps, and future/V2+ plans
+### Clean Architecture & Persistent Memory
 
-### Documentation Updates
-- **README.md**: Updated to reflect actual implementation status, added links to new docs
-- **CLAUDE.md**: Added memory model section, references to new docs, expanded limitations
-- **AGENTS.md**: Added testing checklist items for management APIs, references to new docs
+- **4-project Clean Architecture** structure established (Domain, Application, Infrastructure, Api)
+- **MemoryEntry domain model** with lifecycle states, scopes, classifications, importance, tags
+- **Project domain model** for scoped memory association
+- **PostgreSQL persistence** via Entity Framework Core with migrations
+- **Memory management APIs** — full CRUD, supersede, expire, search, statistics
+- **OpenAI-compatible gateway** with streaming, context enrichment, mode detection, model selection
+- **Token tracking and logging** — three-phase estimation with daily file logging
+- **Repository layer tests** with xUnit and EF Core InMemory
 
-## [2.1.0] - 2026-08-21
+---
 
-### Auto Model Selection
-- **Mode detection**: Automatically detects Cline's plan vs build mode from system prompt analysis
-- **Plan mode**: Routes to `auto:smart` for complex reasoning, architecture, and planning tasks
-- **Build mode**: Routes to `auto:fast` for code implementation and tool execution tasks
-- **Configurable**: `AppSettings:ModelSelection` section with `AutoSelectModel`, `PlanModel`, `BuildModel`
-- **Override**: Set `AutoSelectModel: false` to let the client control model selection
+## [1.0.0] - 2026-08-23
 
-### Token Tracking
-- **Token estimation**: Estimates token counts at each pipeline stage (~4 chars/token heuristic)
-- **Three-stage logging**: incoming → enriched → response tokens logged for every request
-- **Provider tokens**: Actual token counts from the provider (if available in response)
-- **Enrichment overhead**: Shows how many tokens DeveloperMemory adds to each request
-- **File logging**: Daily log files at `logs/requests/requests-YYYY-MM-DD.log`
-- **Console logging**: TokenSummary lines in Serilog console output
+### Initial Developer Knowledge Gateway
 
-### Multimodal Content Support
-- **MessageContentConverter**: Custom JSON converter handles both string and array `content` fields
-- Cline's tool result messages with content arrays now deserialize correctly
-- Array content is preserved as JSON string and forwarded to downstream provider
-
-### Model Validation Error Handling
-- **InvalidModelStateResponseFactory**: ASP.NET model validation errors now return OpenAI-compatible error JSON instead of empty 400 body
-- Request body deserialization errors show the actual reason
-
-### Request Logging Middleware
-- **RequestLoggingMiddleware**: Diagnostic middleware logs raw request bodies for `/v1/*` POST endpoints
-- Helps debug client compatibility issues
-
-## [2.0.0] - 2026-08-21
-
-### Major Changes
-- **Streaming support**: Full SSE streaming for `/v1/chat/completions`
-- **Preserved conversation history**: PromptBuilder preserves multi-turn message structure
-- **Removed redundant ProxyController**: Use `/v1/chat/completions` instead
-- **Removed unused ServiceCollectionExtensions**: Dead code cleanup
-
-### OpenAI-Compatible Improvements
-- Complete request model with all standard OpenAI parameters
-- Streaming response models (ChatCompletionChunk)
-- OpenAI-compatible error responses for all `/v1/*` endpoints
-- Model lookup endpoint (GET /v1/models/{modelId})
-- JsonExtensionData support for forwarding unknown fields
-
-### Architecture
-- GlobalExceptionMiddleware for global error handling
-- DownstreamProviderException for structured provider errors
-- Provider-agnostic FreeLlmApiClient
-
-## [1.1.0] - 2026-08-19
-- Consolidated documentation into 4 core files
-- Rewrote CLAUDE.md as comprehensive project reference
-
-## [1.0.0] - 2026-08-14
-- Initial documentation overhaul
+- **Markdown knowledge documents** with YAML frontmatter
+- **Developer profile loading** from Markdown files
+- **Keyword-based search** with relevance scoring
+- **OpenAI-compatible proxy** with request forwarding
+- **PromptBuilder** for context enrichment
+- **ModeDetector** for plan vs build heuristic detection
+- **FreeLlmApiClient** for OpenAI-compatible provider communication

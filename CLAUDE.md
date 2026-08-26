@@ -6,7 +6,7 @@ DeveloperMemory.Api is a **persistent, intelligent AI memory layer and Memory In
 
 **Core purpose:** Prevent developers and AI coding assistants from repeatedly needing to rediscover or manually provide important context.
 
-**Core architecture:** Clean Architecture with 4 source projects + 1 test project, PostgreSQL persistence via EF Core, and an OpenAI-compatible gateway with context enrichment.
+**Core architecture:** Clean Architecture with 4 source projects + 4 test projects, PostgreSQL persistence via EF Core, Docker deployment, and an OpenAI-compatible gateway with context enrichment. The gateway uses an `IModelGateway` abstraction for provider-independent model access.
 
 **Source code is the authority** for current implementation status. Target architecture is documented in [PROJECT_VISION.md](PROJECT_VISION.md).
 
@@ -15,78 +15,103 @@ DeveloperMemory.Api is a **persistent, intelligent AI memory layer and Memory In
 ## Repository Structure
 
 ```
-src/
-├── DeveloperMemory.Domain/           # Entities, enums, repository interfaces
-│   ├── Entities/
-│   │   ├── BaseEntity.cs
-│   │   ├── MemoryEntry.cs
-│   │   └── Project.cs
-│   ├── Enums/
-│   │   ├── DataClassification.cs     # Public, Internal, Confidential, Secret
-│   │   ├── MemoryScope.cs            # Global, Project, Workspace, Private
-│   │   └── MemoryState.cs            # Active, Updated, Superseded, Expired, Archived, Deleted
-│   └── Interfaces/
-│       ├── IMemoryRepository.cs
-│       └── IProjectRepository.cs
+DeveloperMemory.Api.sln (at repository root)
 │
-├── DeveloperMemory.Application/      # Use cases, contracts, DTOs
-│   ├── Contracts/
-│   │   ├── IMemoryService.cs
-│   │   └── IProjectService.cs
-│   ├── Services/
-│   │   ├── MemoryService.cs
-│   │   └── ProjectService.cs
-│   ├── DTOs/
-│   │   ├── CreateMemoryRequest.cs
-│   │   ├── UpdateMemoryRequest.cs
-│   │   ├── MemoryDto.cs
-│   │   ├── MemoryStatsDto.cs
-│   │   ├── CreateProjectRequest.cs
-│   │   ├── UpdateProjectRequest.cs
-│   │   └── ProjectDto.cs
-│   └── Exceptions/
-│       ├── DomainException.cs
-│       ├── MemoryNotFoundException.cs
-│       └── ProjectNotFoundException.cs
+├── src/
+│   ├── DeveloperMemory.Domain/           # Entities, enums, repository interfaces
+│   │   ├── Entities/
+│   │   │   ├── BaseEntity.cs
+│   │   │   ├── MemoryEntry.cs
+│   │   │   └── Project.cs
+│   │   ├── Enums/
+│   │   │   ├── DataClassification.cs     # Public, Internal, Confidential, Secret
+│   │   │   ├── MemoryScope.cs            # Global, Project, Workspace, Private
+│   │   │   └── MemoryState.cs            # Active, Updated, Superseded, Expired, Archived, Deleted
+│   │   └── Interfaces/
+│   │       ├── IMemoryRepository.cs
+│   │       └── IProjectRepository.cs
+│   │
+│   ├── DeveloperMemory.Application/      # Use cases, contracts, DTOs
+│   │   ├── Contracts/
+│   │   │   ├── IMemoryService.cs
+│   │   │   └── IProjectService.cs
+│   │   ├── Services/
+│   │   │   ├── MemoryService.cs
+│   │   │   └── ProjectService.cs
+│   │   ├── DTOs/
+│   │   │   ├── CreateMemoryRequest.cs
+│   │   │   ├── UpdateMemoryRequest.cs
+│   │   │   ├── MemoryDto.cs
+│   │   │   ├── MemoryStatsDto.cs
+│   │   │   ├── CreateProjectRequest.cs
+│   │   │   ├── UpdateProjectRequest.cs
+│   │   │   └── ProjectDto.cs
+│   │   └── Exceptions/
+│   │       ├── DomainException.cs
+│   │       ├── MemoryNotFoundException.cs
+│   │       └── ProjectNotFoundException.cs
+│   │
+│   ├── DeveloperMemory.Infrastructure/   # EF Core, persistence, DI
+│   │   ├── Persistence/
+│   │   │   ├── DeveloperMemoryDbContext.cs
+│   │   │   ├── MemoryRepository.cs
+│   │   │   ├── ProjectRepository.cs
+│   │   │   └── Configurations/
+│   │   │       ├── MemoryEntryConfiguration.cs
+│   │   │       └── ProjectConfiguration.cs
+│   │   ├── Migrations/
+│   │   │   └── 20260824182548_InitialCreate.cs
+│   │   └── DependencyInjection/
+│   │       └── ServiceCollectionExtensions.cs
+│   │
+│   └── DeveloperMemory.Api/              # Controllers, services, gateway
+│       ├── Abstractions/
+│       │   ├── IModelGateway.cs           # Provider-independent model access
+│       │   ├── DownstreamProviderException.cs
+│       │   ├── IMemoryRetriever.cs        # Provider-independent retrieval abstraction
+│       │   ├── MemoryRetrievalResult.cs   # Combined retrieval result type
+│       │   ├── IPromptIntelligenceEngine.cs # Core prompt intelligence boundary
+│       │   ├── PromptIntelligenceResult.cs # Engine result type
+│       │   └── ManagedStream.cs           # Stream wrapper for provider lifecycle
+│       ├── Controllers/
+│       │   ├── MemoryController.cs
+│       │   ├── ProjectsController.cs
+│       │   ├── KnowledgeController.cs
+│       │   ├── ProfilesController.cs
+│       │   └── OpenAIChatCompletionController.cs
+│       ├── Services/
+│       │   ├── PromptBuilder.cs
+│       │   ├── ModeDetector.cs
+│       │   ├── KnowledgeService.cs
+│       │   ├── ProfileService.cs
+│       │   ├── FreeLlmApiClient.cs
+│       │   ├── ContextRetrievalService.cs  # IMemoryRetriever implementation
+│       │   ├── PromptIntelligenceService.cs # IPromptIntelligenceEngine implementation
+│       │   ├── TokenEstimator.cs
+│       │   └── RequestLogger.cs
+│       ├── Models/                       # OpenAI types, knowledge, profiles
+│       ├── Infrastructure/               # Configuration, Middleware
+│       ├── Knowledge/                    # Markdown knowledge documents
+│       └── Profiles/                     # Markdown developer profiles
 │
-├── DeveloperMemory.Infrastructure/   # EF Core, persistence, DI
-│   ├── Persistence/
-│   │   ├── DeveloperMemoryDbContext.cs
-│   │   ├── MemoryRepository.cs
-│   │   ├── ProjectRepository.cs
-│   │   └── Configurations/
-│   │       ├── MemoryEntryConfiguration.cs
-│   │       └── ProjectConfiguration.cs
-│   ├── Migrations/
-│   │   └── 20260824182548_InitialCreate.cs
-│   └── DependencyInjection/
-│       └── ServiceCollectionExtensions.cs
+├── tests/
+│   ├── DeveloperMemory.Domain.Tests/
+│   │   └── MemoryEntryTests.cs           # 12 test methods
+│   ├── DeveloperMemory.Application.Tests/
+│   │   └── MemoryServiceTests.cs         # 16 test methods
+│   ├── DeveloperMemory.Infrastructure.Tests/
+│   │   ├── InMemoryDbFixture.cs
+│   │   ├── MemoryRepositoryTests.cs      # 16 test methods
+│   │   └── ProjectRepositoryTests.cs     # 7 test methods│       └── DeveloperMemory.Api.Tests/
+│       ├── IModelGatewayTests.cs         # 15 test methods
+│       ├── IMemoryRetrieverTests.cs      # 10 test methods
+│       └── IPromptIntelligenceEngineTests.cs # 14 test methods
 │
-├── DeveloperMemory.Api/              # Controllers, services, gateway
-│   ├── Controllers/
-│   │   ├── MemoryController.cs
-│   │   ├── ProjectsController.cs
-│   │   ├── KnowledgeController.cs
-│   │   ├── ProfilesController.cs
-│   │   └── OpenAIChatCompletionController.cs
-│   ├── Services/
-│   │   ├── PromptBuilder.cs
-│   │   ├── ModeDetector.cs
-│   │   ├── KnowledgeService.cs
-│   │   ├── ProfileService.cs
-│   │   ├── FreeLlmApiClient.cs
-│   │   ├── TokenEstimator.cs
-│   │   └── RequestLogger.cs
-│   ├── Models/                       # OpenAI types, knowledge, profiles
-│   ├── Infrastructure/               # Configuration, Middleware
-│   ├── Knowledge/                    # Markdown knowledge documents
-│   └── Profiles/                     # Markdown developer profiles
-│
-tests/
-└── DeveloperMemory.Infrastructure.Tests/
-    ├── InMemoryDbFixture.cs          # Shared EF Core InMemory fixture
-    ├── MemoryRepositoryTests.cs      # Memory repository tests
-    └── ProjectRepositoryTests.cs     # Project repository tests
+├── Dockerfile                            # Multi-stage build
+├── docker-compose.yml                    # 4 services: api, api-postgres, postgres, redis
+├── .dockerignore
+└── docs/
+    └── ARCHITECTURE_AUDIT.md             # Architecture audit and gap analysis
 ```
 
 ---
@@ -115,49 +140,70 @@ OpenAIChatCompletionController
         ├── Validate request
         ├── Detect mode (ModeDetector)
         ├── Select model (auto or client-specified)
-        ├── Load developer profiles (ProfileService)
-        ├── Search knowledge documents (KnowledgeService)
-        ├── Retrieve persistent memory (MemoryService.SearchAsync)
-        ├── Build enriched request (PromptBuilder)
-        │     ├── Append persistent memory context
-        │     ├── Append profile context
-        │     └── Append knowledge context
+        ├── Prepare enriched prompt (IPromptIntelligenceEngine → PromptIntelligenceService)
+        │     ├── Load developer profiles (ProfileService)
+        │     ├── Retrieve context (IMemoryRetriever → ContextRetrievalService)
+        │     │     ├── Search persistent memory (IMemoryService)
+        │     │     └── Search knowledge documents (KnowledgeService)
+        │     └── Build enriched request (PromptBuilder)
         ├── Log token metrics (TokenEstimator + RequestLogger)
-        ├── Forward to provider (FreeLlmApiClient)
+        ├── Forward to provider (IModelGateway → FreeLlmApiClient)
         │     ├── Non-streaming: await response, serialize
         │     └── Streaming: pipe SSE stream to client
         └── Log response metrics
 ```
 
-### Target Architecture (Planned)
+### Provider Abstraction
+
+The controller depends on `IModelGateway` (in `Api/Abstractions/`), not the concrete `FreeLlmApiClient`. To swap providers:
+1. Create a new class implementing `IModelGateway`
+2. Change the DI registration in `Program.cs`
+
+### Retrieval Abstraction
+
+The controller depends on `IMemoryRetriever` (in `Api/Abstractions/`), not on `KnowledgeService` or `IMemoryService` directly. To change retrieval strategy:
+1. Create a new class implementing `IMemoryRetriever`
+2. Change the DI registration in `Program.cs`
+
+```csharp
+// Current: FreeLLMApi (OpenAI-compatible)
+builder.Services.AddHttpClient<FreeLlmApiClient>();
+builder.Services.AddSingleton<IModelGateway>(sp => sp.GetRequiredService<FreeLlmApiClient>());
+
+// Future: alternative provider
+builder.Services.AddSingleton<IModelGateway, AlternativeModelGateway>();
+```
+
+### Target Architecture (Partially Implemented)
 
 ```
 External Clients
         │
         ▼
-API / Gateway Layer
+API / Gateway Layer (Controller)
+        │
+        ├── Mode Detection / Model Selection
         │
         ▼
-Application Orchestration
+IPromptIntelligenceEngine ✅ (Phase 7)
+        │
+        ├── IMemoryRetriever ✅ (Phase 5)
+        │     └── Keyword retrieval
+        │     └── Future: vector/hybrid retrieval
+        ├── Profile Loading
+        └── Prompt Assembly
         │
         ▼
-Prompt Intelligence Engine
-        /       |       \
-       /        |        \
-      v         v         v
-Memory Intelligence  Project Context  Execution Planning
-      |                         |
-      v                         v
-Retrieval / Ranking       Agent / Model / Tools
-      |                         |
-      v                         v
-  Persistence            Provider Adapters
-      |
-      v
-PostgreSQL / Replaceable Stores
+IModelGateway ✅ (Phase 4)
+        │
+        ├── FreeLlmApiClient (current)
+        └── Future: alternative providers
+        │
+        ▼
+Downstream Model / Agent Runtime / Tools
 ```
 
-This target architecture is **not yet implemented**. See [PROJECT_VISION.md](PROJECT_VISION.md) for the full vision.
+See [PROJECT_VISION.md](PROJECT_VISION.md) for the full vision.
 
 ---
 
@@ -236,10 +282,9 @@ This target architecture is **not yet implemented**. See [PROJECT_VISION.md](PRO
 **Chat completion processing:**
 1. Validate request
 2. Detect mode → select model
-3. Load profiles, search knowledge, retrieve persistent memory
-4. Build enriched request (append context to system message)
-5. Forward to downstream provider
-6. Stream or return response with token metrics
+3. Prepare enriched prompt via IPromptIntelligenceEngine (profiles + retrieval + assembly)
+4. Forward to downstream provider
+5. Stream or return response with token metrics
 
 ### Knowledge — `KnowledgeController` (`/api/Knowledge`)
 
@@ -277,7 +322,10 @@ This target architecture is **not yet implemented**. See [PROJECT_VISION.md](PRO
 | `ProfileService` | Singleton | File-based, in-memory cache |
 | `KnowledgeService` | Singleton | File-based, in-memory index |
 | `PromptBuilder` | Singleton | Stateless prompt construction |
-| `FreeLlmApiClient` | Transient (HttpClient) | HTTP client for providers |
+| `IMemoryRetriever → ContextRetrievalService` | Singleton | Orchestrates memory + knowledge retrieval |
+| `IPromptIntelligenceEngine → PromptIntelligenceService` | Singleton | Orchestrates context retrieval + prompt assembly |
+| `IModelGateway → FreeLlmApiClient` | Transient | HTTP client for providers |
+| `FreeLlmApiClient` | Transient (HttpClient) | Concrete provider adapter |
 | `RequestLogger` | Singleton | Stateless logging |
 | `AppSettings` | Options | Bound from `appsettings.json` |
 | `ModelSelectionSettings` | Options | Bound from `AppSettings:ModelSelection` |
@@ -330,23 +378,64 @@ Use `__` separator:
 
 ---
 
+## Docker
+
+### Dockerfile
+
+Multi-stage build:
+- **Stage 1 (build):** `mcr.microsoft.com/dotnet/sdk:10.0` — restore, publish
+- **Stage 2 (runtime):** `mcr.microsoft.com/dotnet/aspnet:10.0` — published output, profiles, knowledge
+
+### docker-compose.yml
+
+| Service | Image | Purpose |
+|---|---|---|
+| `api` | Built from Dockerfile | In-memory mode, development |
+| `api-postgres` | Built from Dockerfile | PostgreSQL mode, production-like |
+| `postgres` | `pgvector/pgvector:pg16` | PostgreSQL with pgvector extension |
+| `redis` | `redis:7-alpine` | Cache (available, not yet integrated) |
+
+```bash
+# In-memory mode
+docker compose up api
+
+# PostgreSQL mode
+docker compose up api-postgres
+```
+
+---
+
 ## Testing
 
-### Test Project
+### Test Projects
 
 ```
-tests/DeveloperMemory.Infrastructure.Tests/
-├── InMemoryDbFixture.cs       # Shared EF Core InMemory context (fresh per test)
-├── MemoryRepositoryTests.cs   # 7+ tests: CRUD, search, scope filtering, expiration, soft delete
-└── ProjectRepositoryTests.cs  # 7 tests: CRUD, list, delete
+tests/
+├── DeveloperMemory.Domain.Tests/
+│   └── MemoryEntryTests.cs              # 12 methods: lifecycle, scopes, states, tags
+├── DeveloperMemory.Application.Tests/
+│   └── MemoryServiceTests.cs            # 16 methods: CRUD, validation, supersession
+├── DeveloperMemory.Infrastructure.Tests/
+│   ├── InMemoryDbFixture.cs              # Shared EF Core InMemory fixture
+│   ├── MemoryRepositoryTests.cs          # 16 methods: CRUD, search, filtering
+│   └── ProjectRepositoryTests.cs         # 7 methods: CRUD, list
+└── DeveloperMemory.Api.Tests/
+    ├── IModelGatewayTests.cs             # 15 methods: gateway abstraction, contract
+    ├── IMemoryRetrieverTests.cs          # 10 methods: retrieval abstraction, contract
+    └── IPromptIntelligenceEngineTests.cs # 14 methods: engine abstraction, contract
 ```
+
+**Total: ~90 test methods** across 4 projects.
 
 **Framework:** xUnit 2.9.3 with EF Core InMemory 10.0.0
-**Coverage:** Repository layer (MemoryRepository, ProjectRepository)
 
 ### Run Tests
 
 ```bash
+# All tests
+dotnet test
+
+# Specific project
 dotnet test tests/DeveloperMemory.Infrastructure.Tests/
 ```
 
@@ -401,7 +490,7 @@ dotnet test tests/DeveloperMemory.Infrastructure.Tests/
 | `Swashbuckle.AspNetCore` | 10.0.1 | Api | Swagger UI |
 | `OpenTelemetry.*` | 1.18.0 | Api | Observability |
 
-### Test Project
+### Test Projects
 
 | Package | Version | Purpose |
 |---|---|---|
@@ -420,3 +509,4 @@ dotnet test tests/DeveloperMemory.Infrastructure.Tests/
 - [ROADMAP.md](ROADMAP.md) — Development roadmap
 - [AGENTS.md](AGENTS.md) — AI agent coding guide
 - [KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md) — Frontmatter format reference
+- [docs/ARCHITECTURE_AUDIT.md](docs/ARCHITECTURE_AUDIT.md) — Architecture audit and gap analysis

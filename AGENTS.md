@@ -1,6 +1,6 @@
 # AGENTS.md — AI Agent Coding Guide
 
-*Last updated: 2026-08-25*
+*Last updated: 2026-08-26*
 
 ---
 
@@ -22,7 +22,7 @@ DeveloperMemory.Api is a **persistent, intelligent AI memory layer and Memory In
 
 4. **Do not place business logic in the API project.** Use cases belong in Application. Business rules belong in Domain. Infrastructure implements external concerns.
 
-5. **Keep providers replaceable.** Do not tightly couple core logic to `FreeLlmApiClient`, OpenAI, or any specific vendor.
+5. **Keep providers replaceable.** The gateway controller depends on `IModelGateway`, not `FreeLlmApiClient`. To swap providers, implement `IModelGateway` and change the DI registration in `Program.cs`.
 
 6. **Treat Prompt Intelligence as core architecture.** The Prompt Intelligence Engine is a central architectural capability, not a convenience helper.
 
@@ -39,50 +39,70 @@ DeveloperMemory.Api is a **persistent, intelligent AI memory layer and Memory In
 ## Project Structure
 
 ```
-src/
-├── DeveloperMemory.Api/
-│   ├── Controllers/
-│   │   ├── MemoryController.cs         # /api/Memory (CRUD, supersede, expire, stats)
-│   │   ├── ProjectsController.cs       # /api/Projects (CRUD)
-│   │   ├── KnowledgeController.cs      # /api/Knowledge (file-based search, CRUD)
-│   │   ├── ProfilesController.cs       # /api/Profiles (file-based loading)
-│   │   └── OpenAIChatCompletionController.cs  # /v1/chat/completions (gateway)
-│   ├── Services/
-│   │   ├── PromptBuilder.cs            # Enriches OpenAI requests with context
-│   │   ├── ModeDetector.cs             # Heuristic plan vs build detection
-│   │   ├── KnowledgeService.cs         # Markdown document parsing + search
-│   │   ├── ProfileService.cs           # Markdown profile parsing
-│   │   ├── FreeLlmApiClient.cs         # HTTP client for OpenAI-compatible providers
-│   │   ├── TokenEstimator.cs           # ~4 chars/token heuristic
-│   │   └── RequestLogger.cs            # Token metrics logging
-│   ├── Models/                          # OpenAI types, knowledge, profiles
-│   ├── Infrastructure/
-│   │   ├── Configuration/               # AppSettings, ModelSelectionSettings
-│   │   └── Middleware/                   # Exception handler, request logger
-│   ├── Knowledge/                       # Markdown knowledge documents
-│   └── Profiles/                        # Markdown developer profiles
+DeveloperMemory.Api.sln (at repository root)
 │
-├── DeveloperMemory.Domain/
-│   ├── Entities/                        # MemoryEntry, Project, BaseEntity
-│   ├── Enums/                           # MemoryScope, MemoryState, DataClassification
-│   └── Interfaces/                      # IMemoryRepository, IProjectRepository
+├── src/
+│   ├── DeveloperMemory.Api/
+│   │   ├── Abstractions/
+│   │   │   ├── IModelGateway.cs            # Provider-independent model access abstraction
+│   │   │   ├── DownstreamProviderException.cs  # Provider error exception
+│   │   │   ├── IMemoryRetriever.cs        # Provider-independent memory/knowledge retrieval abstraction
+│   │   │   └── MemoryRetrievalResult.cs   # Combined retrieval result type
+│   │   ├── Controllers/
+│   │   │   ├── MemoryController.cs         # /api/Memory (CRUD, supersede, expire, stats)
+│   │   │   ├── ProjectsController.cs       # /api/Projects (CRUD)
+│   │   │   ├── KnowledgeController.cs      # /api/Knowledge (file-based search, CRUD)
+│   │   │   ├── ProfilesController.cs       # /api/Profiles (file-based loading)
+│   │   │   └── OpenAIChatCompletionController.cs  # /v1/chat/completions (gateway)
+│   │   ├── Services/
+│   │   │   ├── PromptBuilder.cs            # Enriches OpenAI requests with context
+│   │   │   ├── ModeDetector.cs             # Heuristic plan vs build detection
+│   │   │   ├── KnowledgeService.cs         # Markdown document parsing + search
+│   │   │   ├── ProfileService.cs           # Markdown profile parsing
+│   │   │   ├── FreeLlmApiClient.cs         # IModelGateway implementation (OpenAI-compatible)
+│   │   │   ├── ContextRetrievalService.cs  # IMemoryRetriever implementation (orchestrates memory + knowledge)
+│   │   │   ├── TokenEstimator.cs           # ~4 chars/token heuristic
+│   │   │   └── RequestLogger.cs            # Token metrics logging
+│   │   ├── Models/                          # OpenAI types, knowledge, profiles
+│   │   ├── Infrastructure/
+│   │   │   ├── Configuration/               # AppSettings, ModelSelectionSettings
+│   │   │   └── Middleware/                   # Exception handler, request logger
+│   │   ├── Knowledge/                       # Markdown knowledge documents
+│   │   └── Profiles/                        # Markdown developer profiles
+│   │
+│   ├── DeveloperMemory.Domain/
+│   │   ├── Entities/                        # MemoryEntry, Project, BaseEntity
+│   │   ├── Enums/                           # MemoryScope, MemoryState, DataClassification
+│   │   └── Interfaces/                      # IMemoryRepository, IProjectRepository
+│   │
+│   ├── DeveloperMemory.Application/
+│   │   ├── Contracts/                       # IMemoryService, IProjectService
+│   │   ├── Services/                        # MemoryService, ProjectService
+│   │   ├── DTOs/                            # Request/response DTOs
+│   │   └── Exceptions/                      # DomainException, NotFoundException variants
+│   │
+│   └── DeveloperMemory.Infrastructure/
+│       ├── Persistence/                     # DbContext, Repositories, EF Configurations
+│       ├── Migrations/                      # EF Core migrations
+│       └── DependencyInjection/             # ServiceCollectionExtensions
 │
-├── DeveloperMemory.Application/
-│   ├── Contracts/                       # IMemoryService, IProjectService
-│   ├── Services/                        # MemoryService, ProjectService
-│   ├── DTOs/                            # Request/response DTOs
-│   └── Exceptions/                      # DomainException, NotFoundException variants
+├── tests/
+│   ├── DeveloperMemory.Domain.Tests/
+│   │   └── MemoryEntryTests.cs             # 12 test methods (entity lifecycle)
+│   ├── DeveloperMemory.Application.Tests/
+│   │   └── MemoryServiceTests.cs           # 16 test methods (service logic)
+│   ├── DeveloperMemory.Infrastructure.Tests/
+│   │   ├── InMemoryDbFixture.cs             # Shared EF Core InMemory fixture
+│   │   ├── MemoryRepositoryTests.cs         # 16 test methods (repository)
+│   │   └── ProjectRepositoryTests.cs        # 7 test methods (repository)
+│   └── DeveloperMemory.Api.Tests/
+│       ├── IModelGatewayTests.cs            # 15 test methods (gateway abstraction)
+│       ├── IMemoryRetrieverTests.cs         # 10 test methods (retrieval abstraction)
+│       └── IPromptIntelligenceEngineTests.cs # 14 test methods (engine abstraction)
 │
-└── DeveloperMemory.Infrastructure/
-    ├── Persistence/                     # DbContext, Repositories, EF Configurations
-    ├── Migrations/                      # EF Core migrations
-    └── DependencyInjection/             # ServiceCollectionExtensions
-
-tests/
-└── DeveloperMemory.Infrastructure.Tests/
-    ├── InMemoryDbFixture.cs             # Shared EF Core InMemory fixture
-    ├── MemoryRepositoryTests.cs         # Memory repository tests
-    └── ProjectRepositoryTests.cs        # Project repository tests
+├── Dockerfile                              # Multi-stage build
+├── docker-compose.yml                      # 4 services: api, api-postgres, postgres, redis
+└── .dockerignore
 ```
 
 ---
@@ -133,10 +153,10 @@ tests/
 8. Add tests in `tests/`
 
 ### Adding a New Model/Provider
-1. Create a new API client class in `src/DeveloperMemory.Api/Services/`
-2. Register it in DI (or behind an interface for replaceability)
-3. Update configuration in `AppSettings.cs`
-4. Update controller to use the new provider
+1. Create a new class implementing `IModelGateway` in `src/DeveloperMemory.Api/Services/`
+2. Register it in DI by changing the `IModelGateway` registration in `Program.cs`
+3. Update configuration in `AppSettings.cs` as needed
+4. The controller automatically uses the new provider (no controller changes needed)
 
 ### Adding a New Knowledge Source
 1. Create `.md` file in `src/DeveloperMemory.Api/Knowledge/` with YAML frontmatter
@@ -147,9 +167,9 @@ tests/
 
 ## Key Gotchas
 
-1. **Two memory systems coexist:** The legacy `KnowledgeService` (file-based Markdown) and the persistent `MemoryService` (PostgreSQL). Both are currently used in the gateway enrichment pipeline. Do not remove either without understanding the impact.
+1. **Two memory systems coexist:** The legacy `KnowledgeService` (file-based Markdown) and the persistent `MemoryService` (PostgreSQL). Both are orchestrated behind `IMemoryRetriever` by `ContextRetrievalService`. Do not remove either without understanding the impact.
 
-2. **Tests exist but are limited:** `tests/DeveloperMemory.Infrastructure.Tests/` tests the repository layer with EF Core InMemory. No integration tests for controllers or services yet.
+2. **Tests exist across 4 projects:** `tests/DeveloperMemory.Domain.Tests/` (12 methods), `tests/DeveloperMemory.Application.Tests/` (16 methods), `tests/DeveloperMemory.Infrastructure.Tests/` (23 methods), `tests/DeveloperMemory.Api.Tests/` (~39 methods). Total: ~90 test methods. No integration tests for controllers or services yet.
 
 3. **Token estimates are approximate:** ~4 chars/token heuristic. For billing-accurate counts, check `provider_tokens` in the response.
 
@@ -159,11 +179,17 @@ tests/
 
 6. **CORS is wide open:** For development only. Lock down for production.
 
-7. **No Docker yet:** Deployment is manual. Docker support is planned.
+7. **Docker is available:** Dockerfile + docker-compose.yml at repository root. Use `docker compose up api` for in-memory mode, `docker compose up api-postgres` for PostgreSQL mode.
 
 8. **No authentication:** The API is unprotected. CORS is the only access control.
 
-9. **Services in API project:** Some services (`PromptBuilder`, `ModeDetector`, `FreeLlmApiClient`) live in the API project. Architecturally, these may eventually move to Application/Infrastructure layers, but do not move them prematurely.
+9. **Provider abstraction:** The controller depends on `IModelGateway` (in `Api/Abstractions/`), not the concrete `FreeLlmApiClient`. `FreeLlmApiClient` is the current OpenAI-compatible adapter. To add a new provider, implement `IModelGateway` and swap the DI registration.
+
+10. **Retrieval abstraction:** The gateway controller depends on `IMemoryRetriever` (in `Api/Abstractions/`), not on `KnowledgeService` or `IMemoryService` directly. `ContextRetrievalService` orchestrates both retrieval sources. To change retrieval strategy, implement `IMemoryRetriever` and swap the DI registration.
+
+11. **Prompt intelligence engine:** The controller delegates context retrieval and prompt assembly to `IPromptIntelligenceEngine` (implemented by `PromptIntelligenceService`). The engine orchestrates profile loading, memory/knowledge retrieval (via `IMemoryRetriever`), and prompt enrichment (via `PromptBuilder`). To change intelligence behavior, implement `IPromptIntelligenceEngine` and swap the DI registration.
+
+12. **pgvector available:** docker-compose uses `pgvector/pgvector:pg16` — vector extension ready for future semantic search without infrastructure changes.
 
 ---
 
@@ -173,3 +199,4 @@ tests/
 - [CURRENT_STATUS.md](CURRENT_STATUS.md) — Verified implementation inventory
 - [CLAUDE.md](CLAUDE.md) — Complete technical reference
 - [KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md) — Frontmatter format reference
+- [docs/ARCHITECTURE_AUDIT.md](docs/ARCHITECTURE_AUDIT.md) — Architecture audit and gap analysis

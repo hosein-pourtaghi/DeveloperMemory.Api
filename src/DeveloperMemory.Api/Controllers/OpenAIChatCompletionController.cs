@@ -1,3 +1,4 @@
+using DeveloperMemory.Api.Abstractions;
 using DeveloperMemory.Api.Models;
 using DeveloperMemory.Api.Services;
 using DeveloperMemory.Application.Contracts;
@@ -28,7 +29,7 @@ namespace DeveloperMemory.Api.Controllers;
 [Route("v1")]
 public class OpenAIChatCompletionController : ControllerBase
 {
-    private readonly FreeLlmApiClient _providerClient;
+    private readonly IModelGateway _modelGateway;
     private readonly PromptBuilder _promptBuilder;
     private readonly KnowledgeService _knowledgeService;
     private readonly ProfileService _profileService;
@@ -44,7 +45,7 @@ public class OpenAIChatCompletionController : ControllerBase
     };
 
     public OpenAIChatCompletionController(
-        FreeLlmApiClient providerClient,
+        IModelGateway modelGateway,
         PromptBuilder promptBuilder,
         KnowledgeService knowledgeService,
         ProfileService profileService,
@@ -53,7 +54,7 @@ public class OpenAIChatCompletionController : ControllerBase
         IOptions<ModelSelectionSettings> modelSelection,
         ILogger<OpenAIChatCompletionController> logger)
     {
-        _providerClient = providerClient;
+        _modelGateway = modelGateway;
         _promptBuilder = promptBuilder;
         _knowledgeService = knowledgeService;
         _profileService = profileService;
@@ -73,7 +74,7 @@ public class OpenAIChatCompletionController : ControllerBase
             return;
         }
 
-        if (!_providerClient.IsConfigured)
+        if (!_modelGateway.IsConfigured)
         {
             await WriteErrorResponse(HttpContext, StatusCodes.Status503ServiceUnavailable,
                 "Downstream LLM provider is not configured. Set AppSettings:FreeLlmApi:BaseUrl.",
@@ -103,12 +104,12 @@ public class OpenAIChatCompletionController : ControllerBase
                 {
                     ModeDetector.TaskMode.Plan => _modelSelection.PlanModel,
                     ModeDetector.TaskMode.Build => _modelSelection.BuildModel,
-                    _ => _providerClient.ResolveModel(request.Model)
+                    _ => _modelGateway.ResolveModel(request.Model)
                 };
             }
             else
             {
-                selectedModel = _providerClient.ResolveModel(request.Model);
+                selectedModel = _modelGateway.ResolveModel(request.Model);
             }
 
             request.Model = selectedModel;
@@ -195,7 +196,7 @@ public class OpenAIChatCompletionController : ControllerBase
         {
             _logger.LogDebug("Chat completion request was cancelled by client");
         }
-        catch (DownstreamProviderException ex)
+        catch (Abstractions.DownstreamProviderException ex)
         {
             _logger.LogError(ex, "Downstream provider error for chat completion");
             var (statusCode, errorType) = MapProviderError(ex.StatusCode);
@@ -217,7 +218,7 @@ public class OpenAIChatCompletionController : ControllerBase
         CancellationToken cancellationToken)
     {
         var startTime = DateTime.UtcNow;
-        var response = await _providerClient.SendCompletionAsync(enrichedRequest, cancellationToken);
+        var response = await _modelGateway.SendCompletionAsync(enrichedRequest, cancellationToken);
         var latencyMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
 
         if (string.IsNullOrEmpty(response.Model))
@@ -255,8 +256,7 @@ public class OpenAIChatCompletionController : ControllerBase
         Response.Headers["Connection"] = "keep-alive";
         Response.Headers["X-Accel-Buffering"] = "no";
 
-        using var providerResponse = await _providerClient.SendStreamingCompletionAsync(enrichedRequest, cancellationToken);
-        var providerStream = await providerResponse.Content.ReadAsStreamAsync(cancellationToken);
+        await using var providerStream = await _modelGateway.SendStreamingCompletionAsync(enrichedRequest, cancellationToken);
         var writer = new StreamWriter(Response.Body, encoding: System.Text.Encoding.UTF8, bufferSize: 8192, leaveOpen: true);
 
         try
@@ -287,7 +287,7 @@ public class OpenAIChatCompletionController : ControllerBase
     {
         try
         {
-            var upstreamModels = await _providerClient.GetModelsAsync(cancellationToken);
+            var upstreamModels = await _modelGateway.GetModelsAsync(cancellationToken);
             if (upstreamModels.Count > 0)
             {
                 var modelList = new OpenAIModelListResponse
@@ -308,7 +308,7 @@ public class OpenAIChatCompletionController : ControllerBase
             _logger.LogWarning(ex, "Could not fetch models from upstream provider");
         }
 
-        var defaultModel = _providerClient.ResolveModel(null);
+        var defaultModel = _modelGateway.ResolveModel(null);
         var fallbackList = new OpenAIModelListResponse
         {
             Data =
@@ -330,7 +330,7 @@ public class OpenAIChatCompletionController : ControllerBase
     {
         try
         {
-            var model = await _providerClient.GetModelAsync(modelId, cancellationToken);
+            var model = await _modelGateway.GetModelAsync(modelId, cancellationToken);
             if (model != null)
             {
                 return Ok(model);

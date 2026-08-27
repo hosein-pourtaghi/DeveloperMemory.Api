@@ -15,6 +15,11 @@ public interface IMemoryRetrievalProvider
     string ProviderName { get; }
 
     /// <summary>
+    /// Whether this provider is available for use.
+    /// </summary>
+    bool IsAvailable => true;
+
+    /// <summary>
     /// Retrieves candidate memories matching the request criteria.
     /// Returns unranked candidates — ranking is performed by the caller.
     /// </summary>

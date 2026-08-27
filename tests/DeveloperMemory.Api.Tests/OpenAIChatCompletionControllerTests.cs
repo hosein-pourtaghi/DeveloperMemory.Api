@@ -1,4 +1,5 @@
 using Xunit;
+using DeveloperMemory.Api.Abstractions;
 using DeveloperMemory.Api.Models;
 using DeveloperMemory.Application.Contracts;
 using DeveloperMemory.Domain.Entities;

@@ -1,3 +1,4 @@
+using DeveloperMemory.Application.DTOs;
 using DeveloperMemory.Domain.Entities;
 
 namespace DeveloperMemory.Application.Contracts;

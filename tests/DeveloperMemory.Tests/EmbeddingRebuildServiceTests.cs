@@ -1,6 +1,7 @@
 using DeveloperMemory.Application.Contracts;
 using DeveloperMemory.Domain.Entities;
 using DeveloperMemory.Domain.Interfaces;
+using DeveloperMemory.Application.Services;
 using DeveloperMemory.Infrastructure.Persistence;
 using Microsoft.Extensions.Logging;
 using Moq;

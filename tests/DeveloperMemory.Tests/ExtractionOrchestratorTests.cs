@@ -3,7 +3,7 @@ using DeveloperMemory.Application.Services;
 using DeveloperMemory.Domain.Entities;
 using DeveloperMemory.Domain.Enums;
 using DeveloperMemory.Domain.Interfaces;
-using DeveloperMemory.Infrastructure.Configuration;
+using DeveloperMemory.Domain.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;

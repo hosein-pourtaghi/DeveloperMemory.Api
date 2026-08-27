@@ -231,7 +231,7 @@ public class PromptProfileTests
     }
 
     [Fact]
-    public void PromptProfileProvider_DefaultProfiles Exist()
+    public void PromptProfileProvider_DefaultProfilesExist()
     {
         var provider = new PromptProfileProvider(
             new Mock<ILogger<PromptProfileProvider>>().Object);

@@ -1,3 +1,4 @@
+using DeveloperMemory.Application.DTOs;
 using DeveloperMemory.Application.Contracts;
 using DeveloperMemory.Domain.Entities;
 using DeveloperMemory.Domain.Interfaces;
@@ -67,7 +68,7 @@ public class ProjectContextProvider : IProjectContextProvider
         }
     }
 
-    private static List<string> ExtractArchitectureRules(Project project)
+    private static List<string> ExtractArchitectureRules(ProjectDto project)
     {
         var rules = new List<string>();
 
@@ -113,7 +114,7 @@ public class ProjectContextProvider : IProjectContextProvider
         return rules.Where(r => !string.IsNullOrWhiteSpace(r)).ToList();
     }
 
-    private static List<string> ExtractTechnologyStack(Project project)
+    private static List<string> ExtractTechnologyStack(ProjectDto project)
     {
         var stack = new List<string>();
 
@@ -145,7 +146,7 @@ public class ProjectContextProvider : IProjectContextProvider
         return stack.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
     }
 
-    private static List<string> ExtractCodingConventions(Project project)
+    private static List<string> ExtractCodingConventions(ProjectDto project)
     {
         var conventions = new List<string>();
 
@@ -177,7 +178,7 @@ public class ProjectContextProvider : IProjectContextProvider
         return conventions.Where(c => !string.IsNullOrWhiteSpace(c)).ToList();
     }
 
-    private static List<string> ExtractDecisions(Project project)
+    private static List<string> ExtractDecisions(ProjectDto project)
     {
         var decisions = new List<string>();
 

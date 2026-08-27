@@ -185,4 +185,16 @@ public class HybridRanker : IRetrievalRanker
 
         return matchCount > 0 ? 1.0 : 0.2;
     }
+
+    private static double NormalizeScopeRelevance(RetrievedMemory memory)
+    {
+        return memory.Scope switch
+        {
+            MemoryScope.Project => 0.9,
+            MemoryScope.Workspace => 0.8,
+            MemoryScope.Global => 0.6,
+            MemoryScope.Private => 0.7,
+            _ => 0.5
+        };
+    }
 }

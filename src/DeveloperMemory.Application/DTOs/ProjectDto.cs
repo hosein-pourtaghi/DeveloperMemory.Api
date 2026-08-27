@@ -8,4 +8,5 @@ public class ProjectDto
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public int MemoryCount { get; set; }
+    public string? ConfigurationJson { get; set; }
 }

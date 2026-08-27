@@ -295,6 +295,6 @@ public partial class DeterministicPromptAnalyzer : IPromptAnalyzer
     [GeneratedRegex(@"\b(?:project|module|service|class|method)\s+[A-Za-z][\w]*")]
     private static partial Regex ProjectRefRegex();
 
-    [GeneratedRegex(@"\"([^\"]+)\"")]
+    [GeneratedRegex("\"[^\"]+\"")]
     private static partial Regex ConstraintPatternRegex();
 }

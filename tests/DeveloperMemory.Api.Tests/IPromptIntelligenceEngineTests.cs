@@ -212,7 +212,7 @@ public class IPromptIntelligenceEngineContractTests
     [Fact]
     public void PromptIntelligenceEngine_ImplementsIPromptIntelligenceEngine()
     {
-        var engineType = typeof(Services.PromptIntelligence.PromptIntelligenceEngine);
+        var engineType = typeof(DeveloperMemory.Application.Services.PromptIntelligence.PromptIntelligenceEngine);
         var interfaceType = typeof(IPromptIntelligenceEngine);
 
         Assert.True(interfaceType.IsAssignableFrom(engineType),

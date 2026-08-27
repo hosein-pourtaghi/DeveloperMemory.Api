@@ -1,5 +1,7 @@
 using DeveloperMemory.Application.Contracts;
 using DeveloperMemory.Domain.Entities;
+using DeveloperMemory.Application.Services;
+using DeveloperMemory.Application.Services.PromptIntelligence;
 using DeveloperMemory.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;

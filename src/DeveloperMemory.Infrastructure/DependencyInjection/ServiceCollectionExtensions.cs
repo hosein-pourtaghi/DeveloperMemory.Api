@@ -3,6 +3,7 @@ using DeveloperMemory.Application.Services;
 using DeveloperMemory.Application.Services.PromptIntelligence;
 using DeveloperMemory.Application.Services.Retrieval;
 using DeveloperMemory.Domain.Interfaces;
+using DeveloperMemory.Domain.Configuration;
 using DeveloperMemory.Infrastructure.Configuration;
 using DeveloperMemory.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -142,6 +143,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IExtractionOrchestrator, ExtractionOrchestrator>();
 
         // LLM conflict detection (wraps deterministic)
+        services.AddScoped<MemoryConflictDetector>();
         services.AddScoped<IMemoryConflictDetector>(sp =>
         {
             var deterministic = sp.GetRequiredService<MemoryConflictDetector>();
@@ -177,8 +179,8 @@ public static class ServiceCollectionExtensions
                 var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<LlmIntentAnalyzer>>();
                 var llm = new LlmIntentAnalyzer(httpClientFactory, options, logger);
                 var resolver = sp.GetRequiredService<IIntentResolver>();
-                var resolverLogger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<IntentResolver>>();
-                return new HybridIntentAnalyzer(deterministic, llm, resolver, resolverLogger);
+                var hybridLogger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DeveloperMemory.Application.Services.HybridIntentAnalyzer>>();
+                return new HybridIntentAnalyzer(deterministic, llm, resolver, hybridLogger);
             });
         }
         else
@@ -209,7 +211,7 @@ public static class ServiceCollectionExtensions
             // Fallback: in-memory audit for testing
             services.AddSingleton<IPromptIntelligenceAudit, InMemoryPromptAudit>();
             services.AddSingleton<IPromptQualityEvaluator, DeterministicPromptQualityEvaluator>();
-            services.AddSingleton<PromptProcessingRecordRepository>();
+            services.AddScoped<PromptProcessingRecordRepository>();
         }
 
         // Phase 12: Prompt Intelligence Evaluation, Experimentation & Observability
@@ -242,8 +244,8 @@ public static class ServiceCollectionExtensions
         // Metrics
         services.AddSingleton<IPromptIntelligenceMetrics, InMemoryPromptMetrics>();
 
-        // Background history retention worker
-        if (promptIntelligenceOptions.HistoryRetention.Enabled)
+        // Background history retention worker (only when persistence is available)
+        if (promptIntelligencePersistence && !useInMemory && promptIntelligenceOptions.HistoryRetention.Enabled)
         {
             services.AddHostedService<PromptHistoryRetentionWorker>();
         }

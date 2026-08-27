@@ -1,8 +1,9 @@
-namespace DeveloperMemory.Infrastructure.Configuration;
+namespace DeveloperMemory.Domain.Configuration;
 
 /// <summary>
 /// Configuration for LLM-assisted memory intelligence.
 /// When disabled, deterministic extraction only is used.
+/// Located in Domain layer so both Application and Infrastructure can reference it.
 /// </summary>
 public class MemoryIntelligenceOptions
 {

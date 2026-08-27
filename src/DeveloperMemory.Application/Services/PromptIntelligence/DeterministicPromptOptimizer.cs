@@ -1,3 +1,4 @@
+using DeveloperMemory.Application.Contracts;
 using Microsoft.Extensions.Logging;
 
 namespace DeveloperMemory.Application.Services.PromptIntelligence;
@@ -13,13 +14,26 @@ namespace DeveloperMemory.Application.Services.PromptIntelligence;
 /// - Override instructions
 /// - Call external LLMs
 /// </summary>
-public class DeterministicPromptOptimizer
+public class DeterministicPromptOptimizer : IPromptOptimizer
 {
     private readonly ILogger<DeterministicPromptOptimizer> _logger;
 
     public DeterministicPromptOptimizer(ILogger<DeterministicPromptOptimizer> logger)
     {
         _logger = logger;
+    }
+
+    /// <summary>
+    /// IPromptOptimizer implementation: optimizes a prompt string.
+    /// </summary>
+    public string Optimize(string prompt)
+    {
+        var optimized = RemoveDuplicateLines(prompt);
+        optimized = NormalizeWhitespace(optimized);
+        optimized = RemoveRedundantHeaders(optimized);
+        optimized = CompressRepeatedInstructions(optimized);
+        optimized = EnsureClearDelimiters(optimized);
+        return optimized;
     }
 
     /// <summary>

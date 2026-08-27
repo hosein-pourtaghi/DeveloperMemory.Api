@@ -100,7 +100,7 @@ public class DeterministicPromptOptimizerTests
     }
 
     [Fact]
-    public void Optimize_PreservesContent Meaning()
+    public void Optimize_PreservesContentMeaning()
     {
         var input = "## Project Context\nProject uses PostgreSQL\n\n## Constraints\nUse Clean Architecture";
         var result = _optimizer.Optimize(input);

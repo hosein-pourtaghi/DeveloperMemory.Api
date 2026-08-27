@@ -70,6 +70,32 @@ builder.Host.UseSerilog((context, services) =>
 });
 
 // ── Infrastructure (EF Core, Repositories, Services) ──
+// If PostgreSQL is configured but unreachable at startup, fall back to in-memory.
+var useInMemoryConfig = builder.Configuration.GetValue<bool>("UseInMemoryDatabase");
+if (!useInMemoryConfig)
+{
+    var connStr = builder.Configuration.GetConnectionString("DefaultConnection");
+    if (string.IsNullOrEmpty(connStr))
+    {
+        Log.Warning("No 'DefaultConnection' configured. Falling back to in-memory database.");
+        builder.Configuration["UseInMemoryDatabase"] = "true";
+    }
+    else
+    {
+        try
+        {
+            // Quick connectivity check before full service registration
+            using var testConn = new Npgsql.NpgsqlConnection(connStr);
+            testConn.Open();
+            testConn.Close();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "PostgreSQL unreachable. Falling back to in-memory database.");
+            builder.Configuration["UseInMemoryDatabase"] = "true";
+        }
+    }
+}
 builder.Services.AddDeveloperMemoryInfrastructure(builder.Configuration);
 
 // Add services to the container
@@ -142,7 +168,7 @@ builder.Services.AddSingleton<IModelGateway>(sp => sp.GetRequiredService<FreeLlm
 // Register the memory retriever: ContextRetrievalService orchestrates persistent memory
 // and knowledge document retrieval behind the IMemoryRetriever abstraction.
 // To change retrieval strategy (e.g., add vector search), replace this registration.
-builder.Services.AddSingleton<IMemoryRetriever, ContextRetrievalService>();
+builder.Services.AddScoped<IMemoryRetriever, ContextRetrievalService>();
 
 
 // Add CORS
@@ -173,8 +199,14 @@ using (var scope = app.Services.CreateScope())
         }
         catch (Exception ex)
         {
-            Log.Warning(ex, "Database migration failed. Application will continue with in-memory fallback.");
+            Log.Warning(ex, "Database migration failed. Application running with PostgreSQL configuration but database may be degraded.");
         }
+    }
+    else
+    {
+        // Ensure in-memory database is initialized
+        dbContext.Database.EnsureCreated();
+        Log.Information("Using in-memory database.");
     }
 }
 

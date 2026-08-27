@@ -1,4 +1,5 @@
 using DeveloperMemory.Domain.Entities;
+using DeveloperMemory.Domain.Enums;
 
 namespace DeveloperMemory.Domain.Interfaces;
 

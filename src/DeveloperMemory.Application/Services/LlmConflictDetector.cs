@@ -6,7 +6,7 @@ using DeveloperMemory.Domain.Enums;
 using DeveloperMemory.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using DeveloperMemory.Infrastructure.Configuration;
+using DeveloperMemory.Domain.Configuration;
 
 namespace DeveloperMemory.Application.Services;
 
@@ -46,7 +46,7 @@ public class LlmConflictDetector : IMemoryConflictDetector
         _logger = logger;
     }
 
-    public List<MemoryConflict> DetectConflicts(
+    public IReadOnlyList<MemoryConflict> DetectConflicts(
         MemoryEntry candidate,
         IReadOnlyList<MemoryEntry> existingMemories)
     {
@@ -80,7 +80,7 @@ public class LlmConflictDetector : IMemoryConflictDetector
     /// Async version for future LLM-enhanced conflict detection.
     /// Currently returns deterministic results only.
     /// </summary>
-    public async Task<List<MemoryConflict>> DetectConflictsAsync(
+    public async Task<IReadOnlyList<MemoryConflict>> DetectConflictsAsync(
         MemoryEntry candidate,
         IReadOnlyList<MemoryEntry> existingMemories,
         CancellationToken ct = default)

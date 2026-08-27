@@ -1,3 +1,4 @@
+using DeveloperMemory.Domain.Entities;
 using DeveloperMemory.Application.Contracts;
 using Microsoft.Extensions.Logging;
 

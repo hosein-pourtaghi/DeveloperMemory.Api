@@ -56,6 +56,12 @@ public enum MemoryConflictType
     /// <summary>Updated version of the same information.</summary>
     UpdatedVersion,
 
+    /// <summary>Semantic update — same topic, newer information.</summary>
+    SemanticUpdate,
+
+    /// <summary>Potential conflict requiring review.</summary>
+    PotentialConflict,
+
     /// <summary>No conflict detected.</summary>
     NoConflict
 }

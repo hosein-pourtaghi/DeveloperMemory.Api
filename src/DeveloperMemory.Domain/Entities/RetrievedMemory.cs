@@ -80,6 +80,16 @@ public class RetrievedMemory
     public DateTime UpdatedAt { get; set; }
 
     /// <summary>
+    /// The type of memory (Code, Rule, Context, etc.).
+    /// </summary>
+    public MemoryType MemoryType { get; set; }
+
+    /// <summary>
+    /// Confidence score for this retrieval (0.0 to 1.0).
+    /// </summary>
+    public double Confidence { get; set; }
+
+    /// <summary>
     /// The final relevance score after ranking.
     /// </summary>
     public double RelevanceScore { get; set; }

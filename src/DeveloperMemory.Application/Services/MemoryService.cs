@@ -176,18 +176,40 @@ public class MemoryService : IMemoryService
         if (existing.State == MemoryState.Superseded)
             throw new DomainException("Memory is already superseded.", "already_superseded");
 
-        // Create the replacement memory
-        var replacement = await CreateAsync(replacementRequest, ct);
+        // Create the replacement memory entity directly
+        var replacementEntry = new MemoryEntry
+        {
+            Title = replacementRequest.Title,
+            Content = replacementRequest.Content,
+            Scope = replacementRequest.Scope,
+            State = MemoryState.Active,
+            MemoryType = replacementRequest.MemoryType,
+            Classification = replacementRequest.Classification,
+            ProjectId = replacementRequest.Scope == MemoryScope.Project ? replacementRequest.ProjectId : null,
+            WorkspaceId = replacementRequest.Scope == MemoryScope.Workspace ? replacementRequest.WorkspaceId : null,
+            UserId = replacementRequest.Scope == MemoryScope.Private ? replacementRequest.UserId : null,
+            Source = replacementRequest.Source,
+            ExpiresAt = replacementRequest.ExpiresAt,
+            Importance = replacementRequest.Importance,
+            Confidence = replacementRequest.Confidence,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            NormalizedContent = ComputeNormalizedContent(replacementRequest.Title, replacementRequest.Content),
+            SupersedesId = existing.Id
+        };
 
-        // Set the bidirectional relationship
-        replacement.SupersedesId = existing.Id;
-        await _memoryRepository.UpdateAsync(replacement, ct);
+        if (replacementRequest.Tags != null)
+        {
+            replacementEntry.SetTags(replacementRequest.Tags);
+        }
+
+        var createdReplacement = await _memoryRepository.CreateAsync(replacementEntry, ct);
 
         // Mark the old one as superseded
-        existing.Supersede(replacement.Id);
+        existing.Supersede(createdReplacement.Id);
         await _memoryRepository.UpdateAsync(existing, ct);
 
-        return await MapToDtoAsync(replacement, ct);
+        return await MapToDtoAsync(createdReplacement, ct);
     }
 
     public async Task<int> ExpireAsync(CancellationToken ct = default)

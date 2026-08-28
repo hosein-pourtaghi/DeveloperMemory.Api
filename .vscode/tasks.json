@@ -7,7 +7,7 @@
             "type": "process",
             "args": [
                 "build",
-                "${workspaceFolder}/DeveloperMemory.Api/DeveloperMemory.Api.csproj",
+                "${workspaceFolder}/DeveloperMemory.Api.sln",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary"
             ],

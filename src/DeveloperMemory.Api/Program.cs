@@ -351,4 +351,11 @@ app.MapGet("/health", async (DeveloperMemoryDbContext dbContext) =>
     });
 });
 
-app.Run();
+try
+{
+    app.Run();
+}
+catch (System.Exception ex)
+{
+    throw;
+}

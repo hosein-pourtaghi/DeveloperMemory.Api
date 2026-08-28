@@ -44,6 +44,7 @@ public static class ServiceCollectionExtensions
         // Repositories
         services.AddScoped<IMemoryRepository, MemoryRepository>();
         services.AddScoped<IProjectRepository, ProjectRepository>();
+        services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
 
         // Application services
         services.AddScoped<IMemoryService, MemoryService>();

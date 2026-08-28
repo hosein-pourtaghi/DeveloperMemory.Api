@@ -1,4 +1,5 @@
 using DeveloperMemory.Api.Abstractions;
+using Microsoft.AspNetCore.Authorization;
 using DeveloperMemory.Api.Models;
 using DeveloperMemory.Api.Services;
 using DeveloperMemory.Application.Contracts;
@@ -32,6 +33,7 @@ namespace DeveloperMemory.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("v1")]
+[Authorize]
 public class OpenAIChatCompletionController : ControllerBase
 {
     private readonly IModelGateway _modelGateway;
@@ -40,6 +42,7 @@ public class OpenAIChatCompletionController : ControllerBase
     private readonly IPromptIntelligenceEngine _intelligenceEngine;
     private readonly RequestLogger _requestLogger;
     private readonly ModelSelectionSettings _modelSelection;
+    private readonly ICurrentUser _currentUser;
     private readonly ILogger<OpenAIChatCompletionController> _logger;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -55,6 +58,7 @@ public class OpenAIChatCompletionController : ControllerBase
         IPromptIntelligenceEngine intelligenceEngine,
         RequestLogger requestLogger,
         IOptions<ModelSelectionSettings> modelSelection,
+        ICurrentUser currentUser,
         ILogger<OpenAIChatCompletionController> logger)
     {
         _modelGateway = modelGateway;
@@ -63,6 +67,7 @@ public class OpenAIChatCompletionController : ControllerBase
         _intelligenceEngine = intelligenceEngine;
         _requestLogger = requestLogger;
         _modelSelection = modelSelection.Value;
+        _currentUser = currentUser;
         _logger = logger;
     }
 
@@ -144,7 +149,7 @@ public class OpenAIChatCompletionController : ControllerBase
 
             var promptPackage = await _intelligenceEngine.ProcessAsync(
                 searchQuery ?? string.Empty,
-                request.User ?? "anonymous",
+                _currentUser.UserId,
                 projectGuid,
                 request.WorkspaceId,
                 contextTokenBudget: 4000,

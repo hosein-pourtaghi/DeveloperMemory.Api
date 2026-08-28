@@ -10,11 +10,13 @@ public class ProjectService : IProjectService
 {
     private readonly IProjectRepository _projectRepository;
     private readonly IMemoryRepository _memoryRepository;
+    private readonly ICurrentUser _currentUser;
 
-    public ProjectService(IProjectRepository projectRepository, IMemoryRepository memoryRepository)
+    public ProjectService(IProjectRepository projectRepository, IMemoryRepository memoryRepository, ICurrentUser currentUser)
     {
         _projectRepository = projectRepository;
         _memoryRepository = memoryRepository;
+        _currentUser = currentUser;
     }
 
     public async Task<ProjectDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -73,7 +75,7 @@ public class ProjectService : IProjectService
     private async Task<ProjectDto> MapToDtoAsync(Project project, CancellationToken ct = default)
     {
         var memoryCount = await _memoryRepository.CountAsync(
-            projectId: project.Id, ct: ct);
+            _currentUser.UserId, projectId: project.Id, ct: ct);
 
         return new ProjectDto
         {

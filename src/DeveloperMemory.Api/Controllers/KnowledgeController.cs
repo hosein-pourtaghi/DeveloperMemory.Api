@@ -1,11 +1,13 @@
 using DeveloperMemory.Api.Models;
 using DeveloperMemory.Api.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 
 namespace DeveloperMemory.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class KnowledgeController : ControllerBase
 {
     private readonly KnowledgeService _knowledgeService;

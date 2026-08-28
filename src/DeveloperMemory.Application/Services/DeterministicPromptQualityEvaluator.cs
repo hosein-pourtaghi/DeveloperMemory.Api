@@ -93,7 +93,7 @@ public class DeterministicPromptQualityEvaluator : IPromptQualityEvaluator
 
     private static double EvaluateConstraintPreservation(string original, string optimized, IntentAnalysisResult? intent)
     {
-        if (intent?.ExplicitConstraints.Count == 0)
+        if (intent?.ExplicitConstraints == null || intent.ExplicitConstraints.Count == 0)
         {
             return 1.0; // No constraints to preserve
         }

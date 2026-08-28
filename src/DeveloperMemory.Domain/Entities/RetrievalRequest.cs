@@ -8,7 +8,13 @@ namespace DeveloperMemory.Domain.Entities;
 public class RetrievalRequest
 {
     /// <summary>
-    /// The user or caller performing the retrieval.
+    /// Server-controlled owner identifier. All retrieval results must belong to this owner.
+    /// Derived from the authenticated principal — never trust client-supplied values.
+    /// </summary>
+    public string OwnerId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The user or caller performing the retrieval (used for Private scope matching).
     /// </summary>
     public string UserId { get; set; } = string.Empty;
 

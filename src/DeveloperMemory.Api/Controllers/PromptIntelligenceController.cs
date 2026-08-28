@@ -1,4 +1,5 @@
 using DeveloperMemory.Application.Contracts;
+using Microsoft.AspNetCore.Authorization;
 using DeveloperMemory.Application.Services.PromptIntelligence;
 using DeveloperMemory.Domain.Entities;
 using DeveloperMemory.Infrastructure.Persistence;
@@ -12,6 +13,7 @@ namespace DeveloperMemory.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class PromptIntelligenceController : ControllerBase
 {
     private readonly IPromptIntelligenceEngine _intelligenceEngine;

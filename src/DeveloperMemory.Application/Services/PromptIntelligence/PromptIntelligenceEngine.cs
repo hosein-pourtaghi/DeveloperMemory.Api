@@ -114,6 +114,7 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
         {
             var retrievalRequest = new RetrievalRequest
             {
+                OwnerId = userId,
                 UserId = userId,
                 ProjectId = projectId,
                 WorkspaceId = workspaceId,

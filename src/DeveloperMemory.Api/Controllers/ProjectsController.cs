@@ -2,11 +2,13 @@ using DeveloperMemory.Application.Contracts;
 using DeveloperMemory.Application.DTOs;
 using DeveloperMemory.Application.Exceptions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 
 namespace DeveloperMemory.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class ProjectsController : ControllerBase
 {
     private readonly IProjectService _projectService;

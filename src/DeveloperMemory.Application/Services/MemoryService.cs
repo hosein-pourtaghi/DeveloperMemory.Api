@@ -18,21 +18,20 @@ public class MemoryService : IMemoryService
         _projectRepository = projectRepository;
     }
 
-    public async Task<MemoryDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    public async Task<MemoryDto?> GetByIdAsync(Guid id, string ownerId, CancellationToken ct = default)
     {
-        var entry = await _memoryRepository.GetByIdAsync(id, ct);
+        var entry = await _memoryRepository.GetByIdAsync(id, ownerId, ct);
         if (entry == null) return null;
 
-        // Track access
         entry.MarkAccessed();
         await _memoryRepository.UpdateAsync(entry, ct);
 
         return await MapToDtoAsync(entry, ct);
     }
 
-    public async Task<List<MemoryDto>> GetByScopeAsync(MemoryScope scope, Guid? projectId = null, CancellationToken ct = default)
+    public async Task<List<MemoryDto>> GetByScopeAsync(MemoryScope scope, string ownerId, Guid? projectId = null, CancellationToken ct = default)
     {
-        var entries = await _memoryRepository.GetByScopeAsync(scope, projectId, ct);
+        var entries = await _memoryRepository.GetByScopeAsync(scope, ownerId, projectId, ct);
         var dtos = new List<MemoryDto>();
         foreach (var entry in entries)
         {
@@ -43,14 +42,14 @@ public class MemoryService : IMemoryService
 
     public async Task<List<MemoryDto>> SearchAsync(
         string query,
+        string ownerId,
         MemoryScope? scope = null,
         Guid? projectId = null,
         List<string>? tags = null,
         CancellationToken ct = default)
     {
-        var entries = await _memoryRepository.SearchAsync(query, scope, projectId, ct);
+        var entries = await _memoryRepository.SearchAsync(query, ownerId, scope, projectId, ct);
 
-        // Filter by tags if specified
         if (tags != null && tags.Count > 0)
         {
             entries = entries.Where(e =>
@@ -66,9 +65,8 @@ public class MemoryService : IMemoryService
         return dtos;
     }
 
-    public async Task<MemoryDto> CreateAsync(CreateMemoryRequest request, CancellationToken ct = default)
+    public async Task<MemoryDto> CreateAsync(CreateMemoryRequest request, string ownerId, CancellationToken ct = default)
     {
-        // Validate project exists if scope is Project
         if (request.Scope == MemoryScope.Project)
         {
             if (request.ProjectId == null)
@@ -79,7 +77,6 @@ public class MemoryService : IMemoryService
                 throw new ProjectNotFoundException(request.ProjectId.Value);
         }
 
-        // Validate importance and confidence ranges
         if (request.Importance < 0.0 || request.Importance > 1.0)
             throw new DomainException("Importance must be between 0.0 and 1.0.", "invalid_importance");
         if (request.Confidence < 0.0 || request.Confidence > 1.0)
@@ -96,6 +93,7 @@ public class MemoryService : IMemoryService
             ProjectId = request.Scope == MemoryScope.Project ? request.ProjectId : null,
             WorkspaceId = request.Scope == MemoryScope.Workspace ? request.WorkspaceId : null,
             UserId = request.Scope == MemoryScope.Private ? request.UserId : null,
+            OwnerId = ownerId,
             Source = request.Source,
             ExpiresAt = request.ExpiresAt,
             Importance = request.Importance,
@@ -114,21 +112,19 @@ public class MemoryService : IMemoryService
         return await MapToDtoAsync(created, ct);
     }
 
-    public async Task<MemoryDto> UpdateAsync(Guid id, UpdateMemoryRequest request, CancellationToken ct = default)
+    public async Task<MemoryDto> UpdateAsync(Guid id, UpdateMemoryRequest request, string ownerId, CancellationToken ct = default)
     {
-        var entry = await _memoryRepository.GetByIdAsync(id, ct)
+        var entry = await _memoryRepository.GetByIdAsync(id, ownerId, ct)
             ?? throw new MemoryNotFoundException(id);
 
         if (request.Title != null) entry.Title = request.Title;
         if (request.Content != null)
         {
             entry.Content = request.Content;
-            entry.NormalizedContent = ComputeNormalizedContent(
-                entry.Title, request.Content);
+            entry.NormalizedContent = ComputeNormalizedContent(entry.Title, request.Content);
         }
         if (request.State.HasValue)
         {
-            // Validate the state transition
             if (!MemoryEntry.IsValidTransition(entry.State, request.State.Value))
             {
                 throw new DomainException(
@@ -149,34 +145,27 @@ public class MemoryService : IMemoryService
         return await MapToDtoAsync(updated, ct);
     }
 
-    public async Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
+    public async Task<bool> DeleteAsync(Guid id, string ownerId, CancellationToken ct = default)
     {
-        var entry = await _memoryRepository.GetByIdAsync(id, ct);
+        var entry = await _memoryRepository.GetByIdAsync(id, ownerId, ct);
         if (entry == null) return false;
 
-        // Soft delete — set state to Deleted
         entry.SoftDelete();
         await _memoryRepository.UpdateAsync(entry, ct);
         return true;
     }
 
-    public async Task<MemoryDto> SupersedeAsync(Guid id, CreateMemoryRequest replacementRequest, CancellationToken ct = default)
+    public async Task<MemoryDto> SupersedeAsync(Guid id, CreateMemoryRequest replacementRequest, string ownerId, CancellationToken ct = default)
     {
-        var existing = await _memoryRepository.GetByIdAsync(id, ct)
+        var existing = await _memoryRepository.GetByIdAsync(id, ownerId, ct)
             ?? throw new MemoryNotFoundException(id);
 
-        // Reject self-supersession
-        // (We can't check ID equality here since replacement is new, but we check the existing isn't already superseded)
-
-        // Reject superseding deleted memory
         if (existing.State == MemoryState.Deleted)
             throw new DomainException("Cannot supersede a deleted memory.", "supersede_deleted");
 
-        // Reject superseding already superseded memory
         if (existing.State == MemoryState.Superseded)
             throw new DomainException("Memory is already superseded.", "already_superseded");
 
-        // Create the replacement memory entity directly
         var replacementEntry = new MemoryEntry
         {
             Title = replacementRequest.Title,
@@ -188,6 +177,7 @@ public class MemoryService : IMemoryService
             ProjectId = replacementRequest.Scope == MemoryScope.Project ? replacementRequest.ProjectId : null,
             WorkspaceId = replacementRequest.Scope == MemoryScope.Workspace ? replacementRequest.WorkspaceId : null,
             UserId = replacementRequest.Scope == MemoryScope.Private ? replacementRequest.UserId : null,
+            OwnerId = ownerId,
             Source = replacementRequest.Source,
             ExpiresAt = replacementRequest.ExpiresAt,
             Importance = replacementRequest.Importance,
@@ -205,7 +195,6 @@ public class MemoryService : IMemoryService
 
         var createdReplacement = await _memoryRepository.CreateAsync(replacementEntry, ct);
 
-        // Mark the old one as superseded
         existing.Supersede(createdReplacement.Id);
         await _memoryRepository.UpdateAsync(existing, ct);
 
@@ -230,14 +219,13 @@ public class MemoryService : IMemoryService
         return count;
     }
 
-    public async Task<MemoryStatsDto> GetStatsAsync(CancellationToken ct = default)
+    public async Task<MemoryStatsDto> GetStatsAsync(string ownerId, CancellationToken ct = default)
     {
         var allEntries = new List<MemoryEntry>();
 
-        // Get all scopes
         foreach (MemoryScope scope in Enum.GetValues<MemoryScope>())
         {
-            var entries = await _memoryRepository.GetByScopeAsync(scope, ct: ct);
+            var entries = await _memoryRepository.GetByScopeAsync(scope, ownerId, ct: ct);
             allEntries.AddRange(entries);
         }
 

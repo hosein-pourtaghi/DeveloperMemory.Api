@@ -30,6 +30,9 @@ public class ContextOrchestrationRequest
     /// <summary>The workspace identifier.</summary>
     public string? WorkspaceId { get; set; }
 
+    /// <summary>Server-controlled owner identifier for memory isolation.</summary>
+    public string? OwnerId { get; set; }
+
     /// <summary>The user identifier.</summary>
     public string? UserId { get; set; }
 

@@ -16,6 +16,8 @@ public class DeveloperMemoryDbContext : DbContext
     public DbSet<PromptExperimentVariant> PromptExperimentVariants => Set<PromptExperimentVariant>();
     public DbSet<PromptExperimentAssignment> PromptExperimentAssignments => Set<PromptExperimentAssignment>();
     public DbSet<PromptExperimentResult> PromptExperimentResults => Set<PromptExperimentResult>();
+    public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+    public DbSet<SecurityAuditLogEntry> SecurityAuditLog => Set<SecurityAuditLogEntry>();
 
     public DeveloperMemoryDbContext(DbContextOptions<DeveloperMemoryDbContext> options)
         : base(options)

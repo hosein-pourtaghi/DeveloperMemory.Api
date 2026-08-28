@@ -7,6 +7,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="DeveloperMemory.Tests" />
+    <InternalsVisibleTo Include="DeveloperMemory.Api.Tests" />
+    <InternalsVisibleTo Include="DeveloperMemory.Infrastructure.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\DeveloperMemory.Application\DeveloperMemory.Application.csproj" />
     <ProjectReference Include="..\DeveloperMemory.Domain\DeveloperMemory.Domain.csproj" />
   </ItemGroup>

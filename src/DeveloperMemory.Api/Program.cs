@@ -4,9 +4,15 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using DeveloperMemory.Api.Abstractions;
+using DeveloperMemory.Api.Infrastructure.Security;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
+using DeveloperMemory.Api.Infrastructure.Authentication;
+using Microsoft.AspNetCore.Authentication;
 using DeveloperMemory.Api.Services;
 using DeveloperMemory.Api.Infrastructure.Configuration;
 using DeveloperMemory.Api.Infrastructure.Middleware;
+using DeveloperMemory.Domain.Interfaces;
 using DeveloperMemory.Infrastructure.DependencyInjection;
 using DeveloperMemory.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -171,14 +177,108 @@ builder.Services.AddSingleton<IModelGateway>(sp => sp.GetRequiredService<FreeLlm
 builder.Services.AddScoped<IMemoryRetriever, ContextRetrievalService>();
 
 
-// Add CORS
+
+// ── Authentication (API Key via Bearer token) ──
+builder.Services.Configure<ApiKeySettings>(builder.Configuration.GetSection("Authentication"));
+builder.Services.AddAuthentication("ApiKey")
+    .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>("ApiKey", options => { });
+builder.Services.AddAuthorization();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<DeveloperMemory.Application.Contracts.ICurrentUser, HttpContextCurrentUser>();
+
+// ── Security Audit Trail ──
+// Persistent audit for PostgreSQL, in-memory for development/testing
+if (!builder.Configuration.GetValue<bool>("UseInMemoryDatabase"))
+{
+    builder.Services.AddScoped<IAuditRepository, AuditRepository>();
+    builder.Services.AddScoped<ISecurityAuditService, PersistentSecurityAuditService>();
+}
+else
+{
+    builder.Services.AddSingleton<ISecurityAuditService, InMemorySecurityAuditService>();
+}
+
+// ── Rate Limiting (per-identity partitioned by endpoint category) ──
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = 429;
+
+    // Single partitioned limiter: partitions by authenticated identity (userId or IP),
+    // then applies per-endpoint-category limits based on the request path.
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+    {
+        var partitionKey = httpContext.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(partitionKey))
+        {
+            partitionKey = $"ip:{httpContext.Connection.RemoteIpAddress}";
+        }
+
+        var path = httpContext.Request.Path.Value ?? string.Empty;
+
+        // Key management endpoints: 20/min per identity
+        if (path.StartsWith("/api/ApiKey", StringComparison.OrdinalIgnoreCase))
+        {
+            return RateLimitPartition.GetFixedWindowLimiter(
+                $"km:{partitionKey}",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 20,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0
+                });
+        }
+
+        // Expensive retrieval/query endpoints: 50/min per identity
+        if (path.Contains("/query", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/retrieve", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/analyze", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/embedding", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/v1/chat/completions", StringComparison.OrdinalIgnoreCase))
+        {
+            return RateLimitPartition.GetFixedWindowLimiter(
+                $"ex:{partitionKey}",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 50,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0
+                });
+        }
+
+        // General endpoints: 200/min per identity
+        return RateLimitPartition.GetFixedWindowLimiter(
+            $"gen:{partitionKey}",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 200,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            });
+    });
+});
+
+// Add CORS - environment-specific
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("CorsPolicy", policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+
+        if (allowedOrigins.Length > 0)
+        {
+            policy.WithOrigins(allowedOrigins)
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        }
+        else
+        {
+            // No origins configured: block all cross-origin requests
+            policy.DisallowCredentials()
+                  .WithOrigins(Array.Empty<string>());
+        }
     });
 });
 
@@ -229,7 +329,9 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseCors("AllowAll");
+app.UseCors("CorsPolicy");
+app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
 

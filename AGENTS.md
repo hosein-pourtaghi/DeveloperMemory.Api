@@ -1,12 +1,12 @@
 # AGENTS.md — AI Agent Coding Guide
 
-*Last updated: 2026-08-26*
+*Last updated: 2026-08-28 — Phase K complete; Phase L next*
 
 ---
 
 ## Project Identity
 
-DeveloperMemory.Api is a **persistent, intelligent AI memory layer and Memory Intelligence Gateway**. It is not a simple knowledge gateway or RAG application. The architecture supports lifecycle-managed persistent memory, project-scoped context, and OpenAI-compatible request enrichment.
+DeveloperMemory.Api is a **persistent, intelligent AI memory layer and Memory Intelligence Gateway**. It is not a simple knowledge gateway or RAG application. The architecture supports lifecycle-managed persistent memory, project-scoped context, OpenAI-compatible request enrichment, and owner-aware prompt-processing history. **Phase K is complete; Phase L — Semantic Memory Retrieval — is next.**
 
 **Source code is the primary truth.** Design documents may lag behind the implementation.
 
@@ -33,6 +33,13 @@ DeveloperMemory.Api is a **persistent, intelligent AI memory layer and Memory In
 9. **Distinguish implemented from planned.** Document what exists in source code, not what the vision describes as a target.
 
 10. **Prefer incremental refactoring** over unnecessary rewrites.
+
+11. **Respect phase boundaries.** Do not silently implement future phases while working on an earlier phase; Phase L is the next authorized implementation phase.
+
+12. **Preserve documented direction.** `PROJECT_VISION.md` defines intended product direction and `ROADMAP.md` defines phase ordering and acceptance criteria.
+
+13. **Do not introduce Agent Runtime, MCP/tool, or central orchestration infrastructure during Phase L.**
+
 
 ---
 
@@ -171,7 +178,7 @@ DeveloperMemory.Api.sln (at repository root)
 
 1. **Two memory systems coexist:** The legacy `KnowledgeService` (file-based Markdown) and the persistent `MemoryService` (PostgreSQL). Both are orchestrated behind `IMemoryRetriever` by `ContextRetrievalService`. Do not remove either without understanding the impact.
 
-2. **Tests exist across 5 projects:** `tests/DeveloperMemory.Domain.Tests/` (10 methods), `tests/DeveloperMemory.Application.Tests/` (16 methods), `tests/DeveloperMemory.Infrastructure.Tests/` (23 methods), `tests/DeveloperMemory.Api.Tests/` (81 methods), `tests/DeveloperMemory.Tests/` (consolidated, 419 methods). Total: ~549 test methods. No integration tests for controllers or services yet.
+2. **Tests exist across 4 active test projects:** Domain 38, Application 333, Infrastructure 122, and API 141; the verified Phase K total is 634 passing tests. Native PostgreSQL integration tests require the local PostgreSQL installation.
 
 3. **Token estimates are approximate:** ~4 chars/token heuristic. For billing-accurate counts, check `provider_tokens` in the response.
 
@@ -181,9 +188,9 @@ DeveloperMemory.Api.sln (at repository root)
 
 6. **CORS is wide open:** For development only. Lock down for production.
 
-7. **Docker is available:** Dockerfile + docker-compose.yml at repository root. Use `docker compose up api` for in-memory mode, `docker compose up api-postgres` for PostgreSQL mode.
+7. **Local verification uses native PostgreSQL + Kestrel.** Dockerfile and compose artifacts are retained for deployment scenarios, but do not replace the local PostgreSQL workflow with Docker unless explicitly requested.
 
-8. **No authentication:** The API is unprotected. CORS is the only access control.
+8. **Authentication exists:** API-key Bearer authentication is implemented, with server-derived ownership and fail-closed access checks.
 
 9. **Provider abstraction:** The controller depends on `IModelGateway` (in `Api/Abstractions/`), not the concrete `FreeLlmApiClient`. `FreeLlmApiClient` is the current OpenAI-compatible adapter. To add a new provider, implement `IModelGateway` and swap the DI registration.
 

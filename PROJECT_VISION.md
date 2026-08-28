@@ -1,6 +1,6 @@
 # PROJECT_VISION.md — DeveloperMemory.Api
 
-*Last updated: 2026-08-25*
+*Last updated: 2026-08-28 (Phase K complete; Phase L next)*
 
 ---
 
@@ -65,10 +65,10 @@ DeveloperMemory.Api is evolving toward a **modular, cloud-first, provider-indepe
 
 - **Lifecycle-managed memory** with intelligent supersession and expiration
 - **Selective and controlled memory capture** (not blind auto-storage)
-- **Intelligent context retrieval** — semantic, hybrid, lifecycle-aware
+- **Intelligent context retrieval** — the current baseline is keyword/lifecycle-aware retrieval with semantic and hybrid foundations; fully configured semantic retrieval remains future work
 - **A core Prompt Intelligence Engine** for sophisticated request analysis and context preparation
 - **Replaceable provider integrations** — LLM providers, vector stores, embedding models, agent runtimes
-- **MCP and tooling integration** with proper modular boundaries
+- **MCP and tooling integration** with proper modular boundaries (future work)
 - **Cloud-first deployment** with container support and observability
 - **Compatibility with free and self-hosted alternatives**
 
@@ -168,6 +168,10 @@ Lifecycle-managed Persistent Memory
 
 ## 8. Memory Retrieval Vision
 
+### Current Status
+
+Keyword retrieval, deterministic ranking, ownership/scope/lifecycle filtering, result bounds, and application retrieval boundaries are implemented. Semantic/vector and hybrid retrieval foundations exist in source and are selectable when configured, but the default local configuration does not enable an external embedding provider. Full production semantic retrieval remains a Phase L objective.
+
 Retrieval should not be "search all and return everything." The target retrieval system should intelligently determine:
 
 - What the user or AI system is trying to accomplish
@@ -237,7 +241,7 @@ Response
 Optional Memory Capture Pipeline
 ```
 
-**Current status**: The system has building blocks — `PromptBuilder` (context assembly), `ModeDetector` (heuristic mode detection), `KnowledgeService` (file-based knowledge), `ProfileService` (file-based profiles), `MemoryService` (persistent memory retrieval), `PromptIntelligenceEngine` (deterministic analysis/context/composition pipeline), and request enrichment in the OpenAI controller. External LLM forwarding remains provider-dependent, and the full autonomous intelligence vision remains a planned evolution.
+**Current status**: The system has implemented building blocks — `PromptBuilder`/context assembly, `ModeDetector` (heuristic mode detection), `KnowledgeService` (file-based knowledge), `ProfileService` (file-based profiles), `MemoryService` (persistent memory), `PromptIntelligenceEngine` (deterministic analysis/context/composition/optimization pipeline), prompt-processing history with owner-aware filters, and request enrichment in the OpenAI controller. Advanced LLM-assisted interpretation, intelligent capture, complete project/workspace context intelligence, and autonomous execution remain planned.
 
 ---
 
@@ -249,13 +253,13 @@ This is a fixed architectural principle. DeveloperMemory.Api must be modular and
 |---|---|---|
 | Model/LLM Providers | FreeLlmApiClient (OpenAI-compatible) | IModelGateway |
 | Memory Persistence | PostgreSQL + EF Core | IMemoryRepository (exists) |
-| Retrieval | Keyword retrieval is default; semantic/vector and hybrid providers are selectable with safe fallback and unified ranking | IMemoryRetrievalService / IMemoryRetrievalProvider |
+| Retrieval | Keyword retrieval is the verified default; semantic/vector and hybrid foundations are selectable when configured, with safe fallback and unified ranking | IMemoryRetrievalService / IMemoryRetrievalProvider |
 | Memory Evaluation | None (manual creation) | IMemoryIntelligenceService |
 | Prompt Intelligence | PromptBuilder (basic enrichment) | IPromptIntelligenceEngine |
 | Project Context | ProjectService + MemoryService | IProjectContextProvider |
 | Agent Runtimes | None (gateway only) | IAgentRuntime |
 | MCP/Tools | None (planned) | MCP-related abstractions |
-| Embeddings/Vector | None (planned) | IEmbeddingProvider |
+| Embeddings/Vector | Provider abstraction and vector/semantic foundations exist; default external semantic runtime is not enabled | IEmbeddingProvider |
 
 The system must not become fundamentally coupled to one LLM vendor, vector database, embedding model, agent framework, or cloud provider.
 
@@ -285,6 +289,10 @@ The project remains compatible with local development and self-hosted deployment
 ---
 
 ## 12. Agent Runtime and MCP Vision
+
+### Current Status
+
+No agent runtime or MCP implementation exists. These remain future phases and must not be introduced as part of Phase L semantic retrieval work.
 
 DeveloperMemory.Api itself is not required to become a full autonomous agent. Instead, it provides intelligent memory, context, and prompt preparation that can be consumed by agents.
 
@@ -350,8 +358,15 @@ DeveloperMemory.Api is **not**:
 
 ---
 
-## 16. Related Documents
+## 16. Phase Status and Future Capabilities
 
+Phase K — Prompt Processing History + Production Verification is complete. Phase L — Semantic Memory Retrieval is the next phase. Phases M-T remain future work as defined in [ROADMAP.md](ROADMAP.md).
+
+The following capabilities are not complete merely because their architectural direction is described here: intelligent memory capture and lifecycle decisioning; fully configured semantic retrieval; advanced LLM-powered Prompt Intelligence; complete project/workspace/repository context intelligence; agent runtimes; MCP/tools; central AI orchestration; production/cloud hardening; and advanced interfaces/workflow automation.
+
+## 17. Related Documents
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — Current and target architecture boundaries
 - [README.md](README.md) — Concise overview, current capabilities, quick start
 - [CURRENT_STATUS.md](CURRENT_STATUS.md) — Verified implementation inventory
 - [ROADMAP.md](ROADMAP.md) — Future evolution phases

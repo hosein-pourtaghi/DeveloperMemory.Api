@@ -37,6 +37,8 @@ Response back to AI Application
 
 ## Current Capabilities
 
+Phase K is complete and verified. Phase L — Semantic Memory Retrieval — is the next implementation phase. See [CURRENT_STATUS.md](CURRENT_STATUS.md) and [ROADMAP.md](ROADMAP.md) for the verified inventory and remaining work.
+
 ### Persistent Memory System (Database-backed)
 - ✅ Full CRUD for memory entries with PostgreSQL persistence
 - ✅ Memory lifecycle: Active, Updated, Superseded, Expired, Archived, Deleted
@@ -74,7 +76,7 @@ Response back to AI Application
 - ✅ Clean Architecture (Domain → Application → Infrastructure → API)
 - ✅ Entity Framework Core with PostgreSQL
 - ✅ EF Core migrations
-- ✅ 3 test projects with 51 test methods (xUnit + EF Core InMemory)
+- ✅ Four active test projects with 634 verified tests (xUnit plus native PostgreSQL integration coverage)
 - ✅ Health check endpoint
 - ✅ OpenTelemetry integration (configurable)
 - ✅ Swagger/OpenAPI documentation
@@ -82,14 +84,18 @@ Response back to AI Application
 - ✅ Docker deployment (Dockerfile + docker-compose.yml)
 - ✅ PostgreSQL with pgvector extension (for future vector search)
 
-### Not Yet Implemented
-- Authentication and authorization
-- Semantic/vector search (embeddings — pgvector available but not integrated)
-- Automatic memory capture from conversations
-- CI/CD pipeline
-- MCP integration
-- Agent runtime abstraction
-- Multi-user support
+### Partial or Future Capabilities
+- Semantic/vector retrieval: foundations exist, but the default local runtime remains keyword-only without an enabled external embedding provider
+- Intelligent/selective memory capture and lifecycle decisioning
+- Advanced LLM-powered Prompt Intelligence
+- Complete project/workspace/repository context intelligence
+- Agent runtime abstraction and execution integration
+- MCP and tool integration
+- Central AI orchestration / personal AI control plane
+- Production/cloud deployment and operational hardening
+- Voice, scheduled, external-service, and advanced workflow automation
+
+Authentication, ownership, PostgreSQL persistence, and multi-user isolation are implemented and verified. See [CURRENT_STATUS.md](CURRENT_STATUS.md) for the full implementation inventory.
 
 See [CURRENT_STATUS.md](CURRENT_STATUS.md) for the full implementation inventory.
 
@@ -118,21 +124,22 @@ DeveloperMemory.Api.sln (at repository root)
 
 **Dependency direction:** Domain ← Application ← Infrastructure ← API
 
-See [CLAUDE.md](CLAUDE.md) for complete technical reference and [PROJECT_VISION.md](PROJECT_VISION.md) for the full architectural vision.
+See [CLAUDE.md](CLAUDE.md) for the complete technical reference, [PROJECT_VISION.md](PROJECT_VISION.md) for the product vision, [ARCHITECTURE.md](ARCHITECTURE.md) for current/target boundaries, and [ROADMAP.md](ROADMAP.md) for Phase L onward.
 
 ---
 
 ## Quick Start
 
-### With Docker (recommended)
+### Local development (native PostgreSQL + Kestrel)
 
 ```bash
-# In-memory mode (no PostgreSQL required)
-docker compose up api
-
-# With PostgreSQL
-docker compose up api-postgres
+dotnet restore
+dotnet run --project src/DeveloperMemory.Api
 ```
+
+### Optional container deployment artifacts
+
+Dockerfile and docker-compose.yml are retained for deployment scenarios, but Docker is not required for local development or Phase K verification.
 
 ### Without Docker
 

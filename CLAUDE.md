@@ -6,7 +6,7 @@ DeveloperMemory.Api is a **persistent, intelligent AI memory layer and Memory In
 
 **Core purpose:** Prevent developers and AI coding assistants from repeatedly needing to rediscover or manually provide important context.
 
-**Core architecture:** Clean Architecture with 4 source projects + 4 test projects, PostgreSQL persistence via EF Core, Docker deployment, and an OpenAI-compatible gateway with context enrichment. The gateway uses an `IModelGateway` abstraction for provider-independent model access.
+**Core architecture:** Clean Architecture with 4 source projects, PostgreSQL persistence via EF Core, Kestrel local runtime, and an OpenAI-compatible gateway with context enrichment. Phase K prompt-processing history is complete and verified. The gateway uses an `IModelGateway` abstraction for provider-independent model access. Docker artifacts exist for future deployment, but native PostgreSQL + Kestrel is the verified local development path.
 
 **Source code is the authority** for current implementation status. Target architecture is documented in [PROJECT_VISION.md](PROJECT_VISION.md).
 
@@ -174,6 +174,8 @@ builder.Services.AddSingleton<IModelGateway, AlternativeModelGateway>();
 
 ### Target Architecture (Partially Implemented)
 
+Phase status: **Phase K COMPLETE; Phase L — Semantic Memory Retrieval is next.** Do not silently implement later roadmap phases while working on an earlier phase. See [ROADMAP.md](ROADMAP.md).
+
 ```
 External Clients
         │
@@ -186,8 +188,8 @@ API / Gateway Layer (Controller)
 IPromptIntelligenceEngine ✅ (Phase 7)
         │
         ├── IMemoryRetrievalService ✅
-        │     └── Lexical, semantic, and hybrid selection with safe fallback
-        │     └── Ownership/scope/lifecycle safeguards and semantic score propagation
+        │     └── Keyword retrieval is the verified default; semantic/hybrid foundations are selectable when configured
+        │     └── Ownership/scope/lifecycle safeguards, deterministic ranking, and bounded results
         ├── Profile Loading
         └── Prompt Assembly
         │
@@ -319,10 +321,11 @@ See [PROJECT_VISION.md](PROJECT_VISION.md) for the full vision.
 | `IProjectService → ProjectService` | Scoped | Application service |
 | `ProfileService` | Singleton | File-based, in-memory cache |
 | `KnowledgeService` | Singleton | File-based, in-memory index |
-| `IMemoryRetriever → ContextRetrievalService` | Singleton | Orchestrates memory + knowledge retrieval |
+| `IMemoryRetriever → ContextRetrievalService` | Scoped | Orchestrates memory + knowledge retrieval |
 | `IPromptIntelligenceEngine → PromptIntelligenceEngine` | Scoped | 6-stage intelligence pipeline (Application layer) |
 | `IMemoryRetrievalService → MemoryRetrievalService` | Scoped | Privacy-aware retrieval pipeline (Application layer) |
 | `IPromptProcessingHistoryService → PromptProcessingHistoryService` | Scoped | Owner-scoped prompt processing history use case |
+| `IPromptProcessingRecordRepository → PromptProcessingRecordRepository` | Scoped | Owner-aware EF Core history repository |
 | `IPromptAnalyzer → DeterministicPromptAnalyzer` | Scoped | Request analysis (Application layer) |
 | `IModelGateway → FreeLlmApiClient` | Transient | HTTP client for providers |
 | `FreeLlmApiClient` | Transient (HttpClient) | Concrete provider adapter |
@@ -380,6 +383,8 @@ Use `__` separator:
 
 ## Docker
 
+Dockerfile and compose artifacts are retained for future deployment scenarios. They are not required for the verified local workflow; use native PostgreSQL and Kestrel locally.
+
 ### Dockerfile
 
 Multi-stage build:
@@ -429,7 +434,9 @@ tests/
 │   └── DeveloperMemory.Tests/                # Consolidated test project (419 methods)
 ```
 
-**Total: ~549 test methods** across 5 test projects (81 Api + 10 Domain + 16 Application + 23 Infrastructure + 419 consolidated).
+The current verified suite has **634 tests** across the four active test projects: Domain 38, Application 333, Infrastructure 122, and API 141. Phase K completed with 634/634 passing.
+
+For current/target architecture boundaries and the complete Phase L-T roadmap, see [ARCHITECTURE.md](ARCHITECTURE.md) and [ROADMAP.md](ROADMAP.md).
 
 **Framework:** xUnit 2.9.3 with EF Core InMemory 10.0.0
 
@@ -461,18 +468,22 @@ dotnet test tests/DeveloperMemory.Infrastructure.Tests/
 ## Key Rules for AI Agents
 
 1. **Source code is the authority** for current implementation. Documentation may lag.
-2. **Do not collapse the project** back into a simple RAG gateway. The Clean Architecture structure is intentional.
-3. **Do not tightly couple** core logic to FreeLlmApiClient or one provider. Keep providers replaceable.
-4. **Do not place all new business logic** in the API project. Use Application layer for use cases, Domain for business rules.
-5. **Preserve Clean Architecture boundaries.** Domain → Application → Infrastructure → API.
-6. **Keep retrieval replaceable.** Use interfaces for any new retrieval strategy.
-7. **Treat Prompt Intelligence** as a core architectural capability, not a convenience feature.
-8. **Do not implement blind memory capture.** Selective and controlled capture is a design requirement.
-9. **Distinguish implemented features from planned architecture.** Source code = current. Vision doc = target.
-10. **Prefer incremental refactoring** over unnecessary rewrites.
-11. **Do not introduce heavyweight infrastructure** without a concrete need.
-12. **Maintain cloud-first suitability** while keeping local development working.
-13. **Preserve compatibility** with free/self-hosted alternatives where practical.
+2. **Phase K is complete and Phase L is next.** Do not silently implement Phase M or later while working on Phase L.
+3. **PROJECT_VISION.md defines product direction; ROADMAP.md defines phase ordering and acceptance criteria.**
+4. **Preserve existing architectural decisions** unless the active phase explicitly authorizes a change.
+5. **Do not introduce Agent Runtime, MCP, tool, or central orchestration infrastructure during Phase L.**
+6. **Do not collapse the project** back into a simple RAG gateway. The Clean Architecture structure is intentional.
+7. **Do not tightly couple** core logic to FreeLlmApiClient or one provider. Keep providers replaceable.
+8. **Do not place all new business logic** in the API project. Use Application layer for use cases, Domain for business rules.
+9. **Preserve Clean Architecture boundaries.** Domain → Application → Infrastructure → API.
+10. **Keep retrieval replaceable.** Use interfaces for any new retrieval strategy.
+11. **Treat Prompt Intelligence** as a core architectural capability, not a convenience feature.
+12. **Do not implement blind memory capture.** Selective and controlled capture is a design requirement.
+13. **Distinguish implemented features from planned architecture.** Source code = current. Vision doc = target.
+14. **Prefer incremental refactoring** over unnecessary rewrites.
+15. **Do not introduce heavyweight infrastructure** without a concrete need.
+16. **Maintain cloud-first suitability** while keeping local development working.
+17. **Preserve compatibility** with free/self-hosted alternatives where practical.
 
 ---
 

@@ -22,8 +22,6 @@ public class PromptIntelligenceController : ControllerBase
     private readonly PromptConstructionEngine _constructionEngine;
     private readonly DeterministicPromptOptimizer _optimizer;
     private readonly ILogger<PromptIntelligenceController> _logger;
-    private readonly IPromptProcessingHistoryService _historyService;
-    private readonly ICurrentUser _currentUser;
 
     public PromptIntelligenceController(
         IPromptIntelligenceEngine intelligenceEngine,
@@ -31,9 +29,7 @@ public class PromptIntelligenceController : ControllerBase
         IContextOrchestrator contextOrchestrator,
         PromptConstructionEngine constructionEngine,
         DeterministicPromptOptimizer optimizer,
-        ILogger<PromptIntelligenceController> logger,
-        IPromptProcessingHistoryService historyService,
-        ICurrentUser currentUser)
+        ILogger<PromptIntelligenceController> logger)
     {
         _intelligenceEngine = intelligenceEngine;
         _intentAnalyzer = intentAnalyzer;
@@ -41,8 +37,6 @@ public class PromptIntelligenceController : ControllerBase
         _constructionEngine = constructionEngine;
         _optimizer = optimizer;
         _logger = logger;
-        _historyService = historyService;
-        _currentUser = currentUser;
     }
 
     /// <summary>
@@ -248,6 +242,7 @@ public class PromptIntelligenceController : ControllerBase
     /// </summary>
     [HttpGet("history")]
     public async Task<ActionResult<object>> GetHistory(
+        [FromServices] PromptProcessingRecordRepository historyRepo,
         [FromQuery] Guid? profileId,
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to,
@@ -257,16 +252,9 @@ public class PromptIntelligenceController : ControllerBase
         [FromQuery] int maxResults = 50,
         CancellationToken ct = default)
     {
-        var records = await _historyService.QueryAsync(
-            _currentUser.UserId,
-            profileId,
-            from,
-            to,
-            optimizationMode,
-            validationStatus,
-            fallbackUsed,
-            maxResults,
-            ct);
+        var records = await historyRepo.QueryAsync(
+            profileId, from, to, optimizationMode, validationStatus,
+            fallbackUsed, maxResults, ct);
 
         return Ok(records.Select(r => new
         {
@@ -301,9 +289,10 @@ public class PromptIntelligenceController : ControllerBase
     [HttpGet("history/{id:guid}")]
     public async Task<ActionResult<object>> GetHistoryRecord(
         Guid id,
+        [FromServices] PromptProcessingRecordRepository historyRepo,
         CancellationToken ct)
     {
-        var record = await _historyService.GetByIdAsync(id, _currentUser.UserId, ct);
+        var record = await historyRepo.GetByIdAsync(id, ct);
         if (record == null) return NotFound();
 
         return Ok(new

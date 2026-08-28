@@ -180,26 +180,7 @@ builder.Services.AddScoped<IMemoryRetriever, ContextRetrievalService>();
 
 // ── Authentication (API Key via Bearer token) ──
 builder.Services.Configure<ApiKeySettings>(builder.Configuration.GetSection("Authentication"));
-builder.Services.AddAuthentication(options =>
-    {
-        options.DefaultAuthenticateScheme = "DevelopmentOrApiKey";
-        options.DefaultChallengeScheme = "DevelopmentOrApiKey";
-    })
-    .AddPolicyScheme("DevelopmentOrApiKey", "Development bypass or API key", options =>
-    {
-        options.ForwardDefaultSelector = context =>
-        {
-            var settings = context.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<ApiKeySettings>>().Value;
-            var environment = context.RequestServices.GetRequiredService<IHostEnvironment>();
-            var hasBearerToken = context.Request.Headers.TryGetValue("Authorization", out var authorization)
-                && authorization.Any(value => value.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase));
-
-            return environment.IsDevelopment() && settings.DevelopmentBypass && !hasBearerToken
-                ? "Development"
-                : "ApiKey";
-        };
-    })
-    .AddScheme<AuthenticationSchemeOptions, DevelopmentAuthenticationHandler>("Development", options => { })
+builder.Services.AddAuthentication("ApiKey")
     .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>("ApiKey", options => { });
 builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();

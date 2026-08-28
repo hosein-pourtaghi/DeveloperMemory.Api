@@ -1,154 +1,134 @@
 # Current Status
 
-**Last verified:** August 28, 2026 (Phase K — Prompt processing history and production verification)
+**Last verified:** August 27, 2026 (Phase G — End-to-End Runtime Verification)
 **Version:** .NET 10.0
-**Current phase:** Phase K — COMPLETE
-**Next phase:** Phase L — Semantic Memory Retrieval
+**Branch:** main
 
 ---
 
 ## Build & Test Baseline
 
-```text
-Restore:      PASS
-Build:        PASS — 0 errors (Release configuration)
-Warnings:     68 (existing diagnostics; not blockers)
-Discovered:   634
-Passed:       634
+```
+Restore:      ✅ All projects restored
+Build:        ✅ 0 errors (Release configuration)
+Warnings:     68 (NuGet advisories only)
+Discovered:   598
+Passed:       598
 Failed:       0
 Skipped:      0
 ```
 
 ### Per-Project Counts
 
-```text
+```
 DeveloperMemory.Domain.Tests:            38
-DeveloperMemory.Application.Tests:      333
-DeveloperMemory.Infrastructure.Tests:   122
-DeveloperMemory.Api.Tests:               141
+DeveloperMemory.Application.Tests:      327
+DeveloperMemory.Infrastructure.Tests:    92
+DeveloperMemory.Api.Tests:              141
 ────────────────────────────────────────────
-TOTAL:                                  634
+TOTAL:                                  598
 ```
 
 ---
 
-## Implemented Through Phase K
+## Runtime Verification Results (Phase G)
 
-### Architecture and Persistence
+### Runtime Smoke-Test Matrix (InMemory Backend)
 
-- Clean Architecture dependency direction: Domain ← Application ← Infrastructure ← API
-- PostgreSQL persistence through EF Core and migrations
-- Native PostgreSQL verification against the configured development database
-- Kestrel runtime and `/health` endpoint
-- Scoped application services and repository boundaries
+| Scenario                  | Result | Backend | Notes |
+| ------------------------- | ------ | ------- | ----- |
+| Startup                   | ✅ PASS | InMemory | Application starts successfully |
+| Health                    | ✅ PASS | InMemory | 200 OK, no auth required |
+| No authentication         | ✅ PASS | InMemory | 401 Unauthorized |
+| Invalid API key           | ✅ PASS | InMemory | 401 Unauthorized |
+| Valid config key auth     | ✅ PASS | InMemory | 200 OK |
+| DB key creation           | ✅ PASS | InMemory | Raw key returned once only |
+| DB key authentication     | ✅ PASS | InMemory | Newly created key authenticates |
+| Key list (no secrets)     | ✅ PASS | InMemory | Metadata only, no KeyHash or raw secret |
+| Key revocation            | ✅ PASS | InMemory | Revoked key → 401 |
+| Key rotation              | ✅ PASS | InMemory | New key issued with overlap expiration |
+| Memory create (User A)    | ✅ PASS | InMemory | Title + content required |
+| Memory create (User B)    | ✅ PASS | InMemory | |
+| Stats User A (≥1)         | ✅ PASS | InMemory | Owner-scoped |
+| Stats User B (≥1)         | ✅ PASS | InMemory | Owner-scoped |
+| Cross-user isolation (A)  | ✅ PASS | InMemory | A cannot see B's memory |
+| Cross-user isolation (B)  | ✅ PASS | InMemory | B cannot see A's memory |
+| Rate limiting             | ✅ PASS | InMemory | Normal requests pass within limits |
+| Audit events              | ✅ PASS | InMemory | Events recorded, no raw secrets |
+| Gateway: no auth → 401   | ✅ PASS | InMemory | 401 Unauthorized |
+| Gateway: reaches pipeline | ✅ PASS | InMemory | Request reaches enrichment (no LLM provider) |
+| Invalid GUID → 404/400    | ✅ PASS | InMemory | 404 Not Found |
 
-### Memory and Projects
+### Runtime Verification Summary
 
-- Persistent memory CRUD
-- Ownership enforcement and fail-closed owner handling
-- Memory scopes: Global, Project, Workspace, Private
-- Lifecycle states and transitions: Active, Updated, Superseded, Expired, Archived, Deleted
-- Data classification, tags, importance, expiration, soft deletion, supersession, and statistics
-- Project CRUD and project-scoped memory association
-
-### Retrieval Foundation
-
-- Keyword retrieval with owner, project, workspace, private-scope, category, lifecycle, expiration, ranking, and bounded-result safeguards
-- Application retrieval abstractions and deterministic ranking
-- Semantic/vector and hybrid provider contracts/foundation exist in source and are selectable when configured, but the default local runtime is keyword-only because no external embedding provider is enabled
-
-### Prompt Intelligence and Gateway
-
-- Deterministic Prompt Intelligence Engine for analysis, context assembly, constraints, composition, optimization, evaluation, and degradation handling
-- OpenAI-compatible gateway with streaming/non-streaming forwarding
-- Profile and knowledge context enrichment
-- Heuristic plan/build mode detection and model selection
-- Token estimation, request logging, Serilog, and configurable OpenTelemetry
-
-### Authentication and Security
-
-- API-key authentication through Bearer tokens
-- Persistent API-key lifecycle management: create, list, rotate, revoke, expiration
-- Salted hash storage and no raw secret persistence
-- Per-identity, endpoint-category rate limiting
-- Append-only security audit trail
-- Server-derived ownership identity
-
-### Phase K Prompt Processing History
-
-- `IPromptProcessingHistoryService → PromptProcessingHistoryService`
-- `IPromptProcessingRecordRepository → PromptProcessingRecordRepository`
-- Owner-aware SQL-side history filtering
-- Owner-aware single-record lookup
-- Maximum history result bound of 100
-- Preserved filters: `profileId`, `from`, `to`, `optimizationMode`, `validationStatus`, `fallbackUsed`
-- Production DI resolution and controller activation verified
-- Authenticated Kestrel HTTP verification verified
-- Native PostgreSQL persistence across Kestrel restart verified with safe test records
-- Phase K result: 634/634 tests passing
-
----
-
-## Partial Capabilities
-
-These have a deterministic or infrastructural foundation, but the full vision is not complete:
-
-- **Semantic memory retrieval:** Embedding/vector/hybrid abstractions and implementations are present and tested, but semantic runtime use requires configured external embedding infrastructure; local default behavior remains keyword retrieval.
-- **Prompt Intelligence:** Deterministic analysis and optimization are implemented; advanced LLM-assisted semantic interpretation is not.
-- **Project/workspace context:** Project and workspace identifiers, project services, and context-provider foundations exist; complete repository/source/documentation-aware context intelligence is not implemented.
-- **Memory lifecycle:** Storage mechanics and explicit lifecycle transitions exist; intelligent value-based lifecycle decisions and automated selective capture are not implemented.
-- **Gateway forwarding:** OpenAI-compatible forwarding is implemented; external provider verification depends on configured upstream credentials/service.
-- **Observability and deployment:** Local logging, health, OpenTelemetry configuration, EF migrations, and Kestrel are implemented; production operational hardening is not.
-
----
-
-## Not Implemented
-
-The following vision capabilities remain future work:
-
-- Full semantic retrieval as the default production capability, including configured provider-independent embeddings, similarity search, and production runtime coverage
-- Intelligent memory importance, confidence, relevance, duplicate, contradiction, consolidation, and lifecycle decisioning
-- Selective automatic memory capture from interactions
-- Advanced LLM-powered intent/task classification, semantic constraints, contradiction detection, deduplication, context selection, budgeting, optimization, and model-aware construction
-- Complete project/workspace/repository/source/documentation/task context intelligence
-- Agent runtime abstraction and execution integration (`IAgentRuntime`)
-- MCP and tool integration (`IToolProvider`, `IMcpClient`, `IToolRegistry`, `IToolExecutor`)
-- Central AI orchestration and personal AI control-plane workflow coordination
-- Production/cloud deployment and operational hardening
-- Voice interaction, scheduled workflows, external actions, email integrations, and advanced autonomous workflows
-
----
-
-## Runtime Verification
-
-Verified against native PostgreSQL and Kestrel:
-
-- Database connectivity and migration state
-- `/health` returned 200 with a connected database
-- Unauthenticated history request returned 401
-- Authenticated owner A and owner B history requests returned only their own records
-- All existing history filters accepted and applied
-- Result bound enforced
-- History remained available after stopping and restarting Kestrel
-- Complete test suite passed: 634/634
-
-Semantic retrieval with an external embedding provider was not claimed as production-runtime verified because the default local configuration does not enable one.
-
----
-
-## Roadmap Position
-
-```text
-Phase K — COMPLETE
-Phase L — NEXT: Semantic Memory Retrieval
-Phase M — Memory Intelligence & Lifecycle Intelligence
-Phase N — Advanced LLM-Powered Prompt Intelligence
-Phase O — Project & Workspace Context Intelligence
-Phase P — Agent Runtime Abstraction & Execution Integration
-Phase Q — MCP & Tool Integration
-Phase R — Central AI Orchestration / Personal AI Control Plane
-Phase S — Production Deployment & Operational Hardening
-Phase T — Advanced Interfaces & Workflow Automation (LONG-TERM)
+```
+Total scenarios:    24
+Passed:             24
+Failed:              0
 ```
 
-See [ROADMAP.md](ROADMAP.md) for objectives, dependencies, boundaries, non-goals, and acceptance criteria for each remaining phase.
+---
+
+## Architecture Summary
+
+- Clean Architecture: Domain ← Application ← Infrastructure ← API
+- Persistent memory with PostgreSQL/InMemory fallback
+- Memory lifecycle (Active, Superseded, Expired, Archived, Deleted)
+- Memory Intelligence: extraction, conflict detection, ingestion
+- Prompt Intelligence: analysis, context assembly, optimization, evaluation
+- Retrieval: keyword, semantic, hybrid with owner isolation
+- API Key authentication with persistent lifecycle management (PostgreSQL)
+- Ownership enforcement at repository, retrieval, and filter levels
+- Fail-closed OwnerId (missing OwnerId = no results)
+- Rate limiting: per-identity partitioned, endpoint-category-specific
+- Security audit trail: persistent PostgreSQL storage (append-only)
+- CORS hardened
+- Sensitive request logging protection
+
+---
+
+## Authentication & Security
+
+- **Model:** API Key via Bearer token
+- **Key storage:** PostgreSQL (primary) + configuration (development bootstrap)
+- **Secret handling:** Salted SHA-256 hashes — raw keys never persisted
+- **Identity abstraction:** ICurrentUser (Application layer)
+- **Ownership enforcement:** Server-derived OwnerId on all memory operations
+- **Fail-closed:** Empty/missing OwnerId returns no results
+- **Lifecycle:** Expiration, revocation, rotation with configurable overlap period
+- **Rate limiting:** Per-identity partitioned (200 general, 50 expensive, 20 key management per minute)
+- **Audit trail:** Persistent PostgreSQL append-only log (no raw secrets)
+- **Key management:** CRUD endpoints (list, create, rotate, revoke, audit)
+
+---
+
+## Development API Keys
+
+Configuration-based keys in `appsettings.json` are **development bootstrap credentials only**.
+Production keys are created via `POST /api/ApiKey/create` and stored in PostgreSQL.
+
+```json
+{
+  "dev-key-user-a-test-2024": "user-a",
+  "dev-key-user-b-test-2024": "user-b"
+}
+```
+
+**Note:** Development keys bypass database lookup. Production should remove config keys.
+
+---
+
+## Remaining Gaps
+
+### Verification Gaps
+1. **PostgreSQL runtime ownership verification** — InMemory tested; PostgreSQL not runtime verified (Docker daemon not available)
+2. **Persistence after restart** — Cannot verify with InMemory backend (data lost on restart)
+3. **Rate-limit exhaustion** — Not tested at scale (too slow for smoke test)
+
+### Intentionally Deferred
+4. **JWT for browser applications** — Out of scope for current architecture
+5. **Integration tests for controllers** — Not yet implemented
+6. **FreeLLMApi integration** — Requires valid API key (not configured)
+
+### No Blockers
+The application is verified to work as intended in InMemory mode. PostgreSQL runtime verification is pending Docker/infrastructure availability.

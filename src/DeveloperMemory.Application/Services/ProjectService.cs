@@ -84,8 +84,7 @@ public class ProjectService : IProjectService
             Description = project.Description,
             CreatedAt = project.CreatedAt,
             UpdatedAt = project.UpdatedAt,
-            MemoryCount = memoryCount,
-            ConfigurationJson = project.ConfigurationJson
+            MemoryCount = memoryCount
         };
     }
 }

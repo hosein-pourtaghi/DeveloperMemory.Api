@@ -256,10 +256,10 @@ public class LlmConflictDetector : IMemoryConflictDetector
                 var conflictType = conflict.Type switch
                 {
                     "Duplicate" => MemoryConflictType.ExactDuplicate,
-                    "Update" => MemoryConflictType.SemanticUpdate,
+                    "Update" => MemoryConflictType.UpdatedVersion,
                     "Contradiction" => MemoryConflictType.Contradiction,
-                    "PotentialConflict" => MemoryConflictType.PotentialConflict,
-                    _ => MemoryConflictType.PotentialConflict
+                    "PotentialConflict" => MemoryConflictType.Contradiction,
+                    _ => MemoryConflictType.Contradiction
                 };
 
                 conflicts.Add(new MemoryConflict

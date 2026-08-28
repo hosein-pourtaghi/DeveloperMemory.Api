@@ -2,9 +2,6 @@ namespace DeveloperMemory.Api.Infrastructure.Authentication;
 
 public class ApiKeySettings
 {
-    public bool DevelopmentBypass { get; set; }
-    public string DevelopmentOwnerId { get; set; } = "development-owner";
-    public string DevelopmentOwnerDisplayName { get; set; } = "Local Development Owner";
     public List<ApiKeyEntry> ApiKeys { get; set; } = [];
     public int DefaultExpirationDays { get; set; } = 90;
     public int RotationOverlapDays { get; set; } = 7;

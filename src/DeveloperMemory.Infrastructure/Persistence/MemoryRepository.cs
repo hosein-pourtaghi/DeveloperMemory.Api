@@ -27,9 +27,7 @@ public class MemoryRepository : IMemoryRepository
         var query = _context.MemoryEntries
             .AsNoTracking()
             .Include(e => e.Project)
-            .Where(e => e.Scope == scope && e.OwnerId == ownerId &&
-                        (e.State == MemoryState.Active || e.State == MemoryState.Updated) &&
-                        (!e.ExpiresAt.HasValue || e.ExpiresAt.Value > DateTime.UtcNow));
+            .Where(e => e.Scope == scope && e.OwnerId == ownerId && e.State != MemoryState.Deleted);
 
         if (projectId.HasValue)
         {
@@ -46,9 +44,7 @@ public class MemoryRepository : IMemoryRepository
         var queryable = _context.MemoryEntries
             .AsNoTracking()
             .Include(e => e.Project)
-            .Where(e => e.OwnerId == ownerId &&
-                        (e.State == MemoryState.Active || e.State == MemoryState.Updated) &&
-                        (!e.ExpiresAt.HasValue || e.ExpiresAt.Value > DateTime.UtcNow));
+            .Where(e => e.OwnerId == ownerId && e.State != MemoryState.Deleted);
 
         if (scope.HasValue)
         {
@@ -108,9 +104,7 @@ public class MemoryRepository : IMemoryRepository
     {
         var query = _context.MemoryEntries
             .AsNoTracking()
-            .Where(e => e.OwnerId == ownerId &&
-                        (e.State == MemoryState.Active || e.State == MemoryState.Updated) &&
-                        (!e.ExpiresAt.HasValue || e.ExpiresAt.Value > DateTime.UtcNow));
+            .Where(e => e.OwnerId == ownerId && e.State != MemoryState.Deleted);
 
         if (scope.HasValue)
         {

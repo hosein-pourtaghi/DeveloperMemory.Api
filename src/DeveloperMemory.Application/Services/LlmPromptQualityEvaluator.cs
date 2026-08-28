@@ -148,9 +148,6 @@ Evaluate the optimized prompt quality.";
                 Issues = json.TryGetProperty("issues", out var issues)
                     ? issues.EnumerateArray().Select(i => i.GetString() ?? string.Empty).ToList()
                     : [],
-                Recommendations = json.TryGetProperty("recommendations", out var recs)
-                    ? recs.EnumerateArray().Select(r => r.GetString() ?? string.Empty).ToList()
-                    : []
             };
         }
         catch (Exception ex)

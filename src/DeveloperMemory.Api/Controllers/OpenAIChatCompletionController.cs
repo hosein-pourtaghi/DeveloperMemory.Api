@@ -309,7 +309,7 @@ public class OpenAIChatCompletionController : ControllerBase
                         Id = m,
                         Object = "model",
                         Created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                        OwnedBy = "upstream-provider"
+                        OwnedBy = "DeveloperMemory"
                     }).ToList()
                 };
                 return Ok(modelList);
@@ -329,8 +329,8 @@ public class OpenAIChatCompletionController : ControllerBase
                 {
                     Id = defaultModel,
                     Object = "model",
-                    Created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                    OwnedBy = "developer-memory"
+                    Created = 0,
+                    OwnedBy = "DeveloperMemory"
                 }
             ]
         };
@@ -525,6 +525,10 @@ public class OpenAIChatCompletionController : ControllerBase
             PresencePenalty = request.PresencePenalty,
             User = request.User,
             StreamOptions = request.StreamOptions,
+            Seed = request.Seed,
+            Tools = request.Tools,
+            ToolChoice = request.ToolChoice,
+            LogitBias = request.LogitBias,
             ExtensionData = request.ExtensionData
         };
     }

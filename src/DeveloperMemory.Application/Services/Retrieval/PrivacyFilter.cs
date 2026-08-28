@@ -63,7 +63,7 @@ public static class PrivacyFilter
                 }
 
                 // Match the memory's stored WorkspaceId against the request's WorkspaceId
-                if (string.IsNullOrEmpty(memory.WorkspaceId) ||
+                if (!string.IsNullOrEmpty(memory.WorkspaceId) &&
                     !string.Equals(memory.WorkspaceId, request.WorkspaceId, StringComparison.Ordinal))
                 {
                     continue;
@@ -79,7 +79,7 @@ public static class PrivacyFilter
                 }
 
                 // Match the memory's stored UserId against the request's UserId
-                if (string.IsNullOrEmpty(memory.UserId) ||
+                if (!string.IsNullOrEmpty(memory.UserId) &&
                     !string.Equals(memory.UserId, request.UserId, StringComparison.Ordinal))
                 {
                     continue;

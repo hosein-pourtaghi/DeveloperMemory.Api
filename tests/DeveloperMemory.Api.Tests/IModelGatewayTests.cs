@@ -316,7 +316,7 @@ public class FreeLlmApiClientContractTests
 
         Assert.Equal(HttpStatusCode.TooManyRequests, ex.StatusCode);
         Assert.Equal("{\"error\":\"rate limited\"}", ex.RawErrorContent);
-        Assert.Contains("TooManyRequests", ex.Message);
+        Assert.Contains("429", ex.Message);
     }
 
     [Fact]
@@ -331,18 +331,23 @@ public class FreeLlmApiClientContractTests
             var parameters = method.GetParameters();
             foreach (var param in parameters)
             {
-                Assert.True(typeof(HttpResponseMessage) != param.ParameterType,
+                Assert.False(UnwrapTaskType(param.ParameterType) == typeof(HttpResponseMessage),
                     $"IModelGateway method {method.Name} parameter {param.Name} should not use HttpResponseMessage");
             }
 
-            Assert.True(typeof(HttpResponseMessage) != method.ReturnType,
+            Assert.False(UnwrapTaskType(method.ReturnType) == typeof(HttpResponseMessage),
                 $"IModelGateway method {method.Name} should not return HttpResponseMessage");
         }
 
         foreach (var prop in interfaceType.GetProperties())
         {
-            Assert.True(typeof(HttpResponseMessage) != prop.PropertyType,
+            Assert.False(UnwrapTaskType(prop.PropertyType) == typeof(HttpResponseMessage),
                 $"IModelGateway property {prop.Name} should not be HttpResponseMessage");
         }
     }
+
+    private static Type UnwrapTaskType(Type type) =>
+        type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Task<>)
+            ? type.GetGenericArguments()[0]
+            : type;
 }

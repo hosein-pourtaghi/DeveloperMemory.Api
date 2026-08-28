@@ -43,9 +43,6 @@ public class MemoryExtractionRequest
 
     /// <summary>Optional hints about what type of memory to look for.</summary>
     public List<MemoryType>? PreferredTypes { get; set; }
-
-    /// <summary>Source or origin of the content being extracted.</summary>
-    public string? Source { get; set; }
 }
 
 /// <summary>

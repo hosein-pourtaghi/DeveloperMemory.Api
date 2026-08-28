@@ -1,5 +1,4 @@
 using DeveloperMemory.Domain.Entities;
-using DeveloperMemory.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -9,7 +8,7 @@ namespace DeveloperMemory.Infrastructure.Persistence;
 /// Repository for prompt processing records.
 /// Provides query capabilities for history endpoints.
 /// </summary>
-public class PromptProcessingRecordRepository : IPromptProcessingRecordRepository
+public class PromptProcessingRecordRepository
 {
     private readonly DeveloperMemoryDbContext _context;
     private readonly ILogger<PromptProcessingRecordRepository> _logger;
@@ -41,27 +40,23 @@ public class PromptProcessingRecordRepository : IPromptProcessingRecordRepositor
 
     public async Task<PromptProcessingRecord?> GetByIdAsync(
         Guid id,
-        string ownerId,
         CancellationToken ct = default)
     {
         return await _context.PromptProcessingRecords
-            .FirstOrDefaultAsync(r => r.Id == id && r.UserId == ownerId, ct);
+            .FirstOrDefaultAsync(r => r.Id == id, ct);
     }
 
     public async Task<IReadOnlyList<PromptProcessingRecord>> GetRecentAsync(
-        string ownerId,
         int count = 50,
         CancellationToken ct = default)
     {
         return await _context.PromptProcessingRecords
-            .Where(r => r.UserId == ownerId)
             .OrderByDescending(r => r.CreatedAt)
             .Take(count)
             .ToListAsync(ct);
     }
 
     public async Task<IReadOnlyList<PromptProcessingRecord>> QueryAsync(
-        string ownerId,
         Guid? profileId = null,
         DateTime? from = null,
         DateTime? to = null,
@@ -71,8 +66,7 @@ public class PromptProcessingRecordRepository : IPromptProcessingRecordRepositor
         int maxResults = 100,
         CancellationToken ct = default)
     {
-        IQueryable<PromptProcessingRecord> query = _context.PromptProcessingRecords
-            .Where(r => r.UserId == ownerId);
+        IQueryable<PromptProcessingRecord> query = _context.PromptProcessingRecords;
 
         if (profileId.HasValue)
             query = query.Where(r => r.ProfileId == profileId.Value);

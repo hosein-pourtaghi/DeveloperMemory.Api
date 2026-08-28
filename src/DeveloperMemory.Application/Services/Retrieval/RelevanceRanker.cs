@@ -7,21 +7,24 @@ namespace DeveloperMemory.Application.Services.Retrieval;
 /// <summary>
 /// Deterministic relevance ranking for memory candidates.
 /// Scoring is provider-independent and easily replaceable.
-/// Scoring model: the weighted components below are divided by 1.20,
-/// preserving their relative importance while keeping the result in [0, 1].
+/// 
+/// Scoring model:
+///   FinalScore = (TextRelevance × 0.35) +
+///                (ScopeRelevance × 0.15) +
+///                (ProjectRelevance × 0.10) +
+///                (RecencyScore × 0.15) +
+///                (ImportanceScore × 0.15) +
+///                (CategoryScore × 0.10)
 /// </summary>
 public class RelevanceRanker : IRetrievalRanker
 {
     // Scoring weights — easily configurable or injectable in the future
     private const double TextWeight = 0.35;
-    private const double SemanticWeight = 0.25;
-    private const double ScopeWeight = 0.10;
+    private const double ScopeWeight = 0.15;
     private const double ProjectWeight = 0.10;
     private const double RecencyWeight = 0.15;
     private const double ImportanceWeight = 0.15;
     private const double CategoryWeight = 0.10;
-    private const double TotalWeight = TextWeight + SemanticWeight + ScopeWeight +
-                                       ProjectWeight + RecencyWeight + ImportanceWeight + CategoryWeight;
 
     /// <summary>
     /// Scores and ranks candidate memories by relevance.
@@ -36,8 +39,7 @@ public class RelevanceRanker : IRetrievalRanker
             var breakdown = new RetrievalScoreBreakdown
             {
                 TextRelevance = CalculateTextRelevance(candidate, request),
-                SemanticRelevance = candidate.SemanticRelevanceScore ?? 0.0,
-                ScopeRelevance = CalculateScopeRelevance(candidate, request),
+                ScopeRelevance = CalculateScopeRelevance(candidate),
                 ProjectRelevance = CalculateProjectRelevance(candidate, request),
                 RecencyScore = CalculateRecencyScore(candidate),
                 ImportanceScore = CalculateImportanceScore(candidate),
@@ -45,27 +47,16 @@ public class RelevanceRanker : IRetrievalRanker
             };
 
             candidate.ScoreBreakdown = breakdown;
-            candidate.RelevanceScore = (
+            candidate.RelevanceScore =
                 (breakdown.TextRelevance * TextWeight) +
-                (breakdown.SemanticRelevance * SemanticWeight) +
                 (breakdown.ScopeRelevance * ScopeWeight) +
                 (breakdown.ProjectRelevance * ProjectWeight) +
                 (breakdown.RecencyScore * RecencyWeight) +
                 (breakdown.ImportanceScore * ImportanceWeight) +
-                (breakdown.CategoryScore * CategoryWeight)) / TotalWeight;
+                (breakdown.CategoryScore * CategoryWeight);
 
             // Ensure score is clamped to [0, 1]
             candidate.RelevanceScore = Math.Clamp(candidate.RelevanceScore, 0.0, 1.0);
-            if (candidate.ScoreBreakdown.TextRelevance == 0.0 &&
-                candidate.ScoreBreakdown.SemanticRelevance == 0.0 &&
-                candidate.ScoreBreakdown.ScopeRelevance == 0.0 &&
-                candidate.ScoreBreakdown.ProjectRelevance == 0.0 &&
-                candidate.ScoreBreakdown.RecencyScore == 0.0 &&
-                candidate.ScoreBreakdown.ImportanceScore == 0.0 &&
-                candidate.ScoreBreakdown.CategoryScore == 0.0)
-            {
-                candidate.RelevanceScore = 0.0;
-            }
         }
 
         // Sort by relevance descending, then stable tie-breaking:
@@ -86,7 +77,7 @@ public class RelevanceRanker : IRetrievalRanker
     private static double CalculateTextRelevance(RetrievedMemory memory, RetrievalRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Query))
-            return 0.0; // No textual signal when no query
+            return 0.3; // Neutral score when no query
 
         var queryLower = request.Query.ToLowerInvariant();
         var score = 0.0;
@@ -120,23 +111,24 @@ public class RelevanceRanker : IRetrievalRanker
         return Math.Clamp(score, 0.0, 1.0);
     }
 
-    private static double CalculateScopeRelevance(RetrievedMemory memory, RetrievalRequest request)
+    private static double CalculateScopeRelevance(RetrievedMemory memory)
     {
-        if (memory.Scope == MemoryScope.Global)
-            return 0.0;
-        if (memory.Scope == MemoryScope.Project && request.ProjectId.HasValue && memory.ProjectId == request.ProjectId)
-            return 1.0;
-        if (memory.Scope == MemoryScope.Workspace && !string.IsNullOrEmpty(request.WorkspaceId) && memory.WorkspaceId == request.WorkspaceId)
-            return 1.0;
-        if (memory.Scope == MemoryScope.Private && !string.IsNullOrEmpty(request.UserId) && memory.UserId == request.UserId)
-            return 1.0;
-        return 0.0;
+        // Global memories get a moderate score (always available but less specific)
+        // Project-scoped memories in a project context get the highest score
+        return memory.Scope switch
+        {
+            MemoryScope.Project => 0.9,
+            MemoryScope.Workspace => 0.8,
+            MemoryScope.Global => 0.6,
+            MemoryScope.Private => 0.7,
+            _ => 0.5
+        };
     }
 
     private static double CalculateProjectRelevance(RetrievedMemory memory, RetrievalRequest request)
     {
         if (!request.ProjectId.HasValue)
-            return 0.0; // No project signal when no project context
+            return 0.5; // Neutral when no project context
 
         if (memory.ProjectId == request.ProjectId.Value)
             return 1.0; // Exact project match
@@ -144,15 +136,12 @@ public class RelevanceRanker : IRetrievalRanker
         if (memory.ProjectId.HasValue)
             return 0.1; // Different project — very low
 
-        // Global memory is eligible, but has no project-specific signal.
-        return 0.0;
+        // Global memory — relevant but not project-specific
+        return 0.5;
     }
 
     private static double CalculateRecencyScore(RetrievedMemory memory)
     {
-        if (memory.UpdatedAt == default)
-            return 0.0;
-
         var age = DateTime.UtcNow - memory.UpdatedAt;
 
         return age.TotalDays switch
@@ -175,7 +164,7 @@ public class RelevanceRanker : IRetrievalRanker
     private static double CalculateCategoryScore(RetrievedMemory memory, RetrievalRequest request)
     {
         if (request.RequiredCategories == null || request.RequiredCategories.Count == 0)
-            return 0.0; // No category signal when no category filter
+            return 0.5; // Neutral when no category filter
 
         // Check if any tags match required categories
         var matchCount = memory.Tags

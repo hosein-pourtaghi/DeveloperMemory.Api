@@ -480,7 +480,8 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
         {
             OriginalRequest = userRequest,
             Intent = IntentType.General,
-            TaskType = TaskType.General,                UserGoal = $"General task: {(userRequest.Length > 100 ? userRequest[..100] + "..." : userRequest)}"
+            TaskType = TaskType.General,
+            UserGoal = $"General task: {(userRequest.Length > 100 ? userRequest[..100] + "..." : userRequest)}"
         };
     }
 

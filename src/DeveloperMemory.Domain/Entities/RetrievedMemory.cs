@@ -65,6 +65,11 @@ public class RetrievedMemory
     public double Importance { get; set; }
 
     /// <summary>
+    /// Confidence inherited from the source memory when available.
+    /// </summary>
+    public double Confidence { get; set; } = 1.0;
+
+    /// <summary>
     /// The source or origin of this memory.
     /// </summary>
     public string? Source { get; set; }
@@ -80,21 +85,6 @@ public class RetrievedMemory
     public DateTime UpdatedAt { get; set; }
 
     /// <summary>
-    /// The type of memory (Code, Rule, Context, etc.).
-    /// </summary>
-    public MemoryType MemoryType { get; set; }
-
-    /// <summary>
-    /// Confidence score for this retrieval (0.0 to 1.0).
-    /// </summary>
-    public double Confidence { get; set; }
-
-    /// <summary>
-    /// Optional semantic similarity supplied by a semantic retrieval provider.
-    /// </summary>
-    public double? SemanticRelevanceScore { get; set; }
-
-    /// <summary>
     /// The final relevance score after ranking.
     /// </summary>
     public double RelevanceScore { get; set; }
@@ -103,6 +93,11 @@ public class RetrievedMemory
     /// The component scores that contributed to the final relevance score.
     /// </summary>
     public RetrievalScoreBreakdown ScoreBreakdown { get; set; } = new();
+
+    /// <summary>
+    /// Memory type used by prompt context prioritization.
+    /// </summary>
+    public MemoryType MemoryType { get; set; } = MemoryType.Other;
 
     /// <summary>
     /// Why this memory was eligible for retrieval.
@@ -124,11 +119,6 @@ public class RetrievalScoreBreakdown
     /// Score from text/keyword relevance to the query.
     /// </summary>
     public double TextRelevance { get; set; }
-
-    /// <summary>
-    /// Similarity score supplied by semantic retrieval, when available.
-    /// </summary>
-    public double SemanticRelevance { get; set; }
 
     /// <summary>
     /// Score from scope relevance (Global > Project > Workspace > Private).

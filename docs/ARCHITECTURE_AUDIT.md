@@ -2,8 +2,6 @@
 
 *Generated: 2026-08-26*
 
-> **⚠️ SUPERSEDED:** This audit has been superseded by [ARCHITECTURE_VERIFICATION.md](ARCHITECTURE_VERIFICATION.md) (2026-08-27), which includes build, test, and runtime verification. The information below may be outdated.
-
 ---
 
 ## 1. Executive Summary

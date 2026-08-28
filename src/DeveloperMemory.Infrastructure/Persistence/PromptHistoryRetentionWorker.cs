@@ -1,7 +1,7 @@
 using DeveloperMemory.Application.Contracts;
 using DeveloperMemory.Infrastructure.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -10,7 +10,6 @@ namespace DeveloperMemory.Infrastructure.Persistence;
 /// <summary>
 /// Background worker that periodically cleans up expired prompt history records.
 /// Respects cancellation and avoids overlapping cleanup executions.
-/// Uses IServiceScopeFactory to resolve scoped services from a singleton background service.
 /// </summary>
 public class PromptHistoryRetentionWorker : BackgroundService
 {
@@ -98,7 +97,7 @@ public class PromptHistoryRetentionWorker : BackgroundService
         _logger.LogInformation("Prompt history retention worker stopped");
     }
 
-    private async Task<int> CleanupInBatchesAsync(
+    private static async Task<int> CleanupInBatchesAsync(
         IPromptHistoryRetentionService retentionService,
         TimeSpan retentionPeriod,
         int batchSize,

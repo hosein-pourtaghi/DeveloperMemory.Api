@@ -49,10 +49,10 @@ public static class ServiceCollectionExtensions
         // Application services
         services.AddScoped<IMemoryService, MemoryService>();
         services.AddScoped<IProjectService, ProjectService>();
-        services.AddScoped<IPromptProcessingHistoryService, PromptProcessingHistoryService>();
 
         // Phase 3: Retrieval pipeline
         services.AddScoped<KeywordRetrievalProvider>();
+        services.AddScoped<IMemoryRetrievalProvider>(sp => sp.GetRequiredService<KeywordRetrievalProvider>());
         services.AddScoped<IRetrievalRanker, RelevanceRanker>();
         services.AddScoped<IContextBudgeter, CharacterContextBudgeter>();
         services.AddScoped<IMemoryRetrievalService, MemoryRetrievalService>();
@@ -111,11 +111,9 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<IEmbeddingCache, InMemoryEmbeddingCache>();
         }
 
-        // Semantic/hybrid retrieval providers
+        // Semantic retrieval provider
         services.AddScoped<SemanticRetrievalProvider>();
         services.AddScoped<HybridRetrievalProvider>();
-        services.AddScoped<IRetrievalProviderResolver, ConfiguredRetrievalProviderResolver>();
-        services.AddScoped<IMemoryRetrievalProvider>(sp => sp.GetRequiredService<KeywordRetrievalProvider>());
 
         // Phase 8: LLM-Assisted Memory Intelligence
         var memoryIntelligenceOptions = new MemoryIntelligenceOptions();
@@ -146,7 +144,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IExtractionOrchestrator, ExtractionOrchestrator>();
 
         // LLM conflict detection (wraps deterministic)
-        services.AddScoped<MemoryConflictDetector>();
         services.AddScoped<IMemoryConflictDetector>(sp =>
         {
             var deterministic = sp.GetRequiredService<MemoryConflictDetector>();
@@ -182,8 +179,8 @@ public static class ServiceCollectionExtensions
                 var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<LlmIntentAnalyzer>>();
                 var llm = new LlmIntentAnalyzer(httpClientFactory, options, logger);
                 var resolver = sp.GetRequiredService<IIntentResolver>();
-                var hybridLogger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DeveloperMemory.Application.Services.HybridIntentAnalyzer>>();
-                return new HybridIntentAnalyzer(deterministic, llm, resolver, hybridLogger);
+                var resolverLogger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<HybridIntentAnalyzer>>();
+                return new HybridIntentAnalyzer(deterministic, llm, resolver, resolverLogger);
             });
         }
         else
@@ -206,7 +203,7 @@ public static class ServiceCollectionExtensions
             services.AddScoped<IPromptProfileProvider, PromptProfileRepository>();
             services.AddScoped<IPromptIntelligenceAudit, PromptIntelligenceAudit>();
             services.AddScoped<IPromptHistoryRetentionService, PromptHistoryRetentionService>();
-            services.AddScoped<IPromptProcessingRecordRepository, PromptProcessingRecordRepository>();
+            services.AddScoped<PromptProcessingRecordRepository>();
             services.AddScoped<IPromptQualityEvaluator, DeterministicPromptQualityEvaluator>();
         }
         else
@@ -214,7 +211,7 @@ public static class ServiceCollectionExtensions
             // Fallback: in-memory audit for testing
             services.AddSingleton<IPromptIntelligenceAudit, InMemoryPromptAudit>();
             services.AddSingleton<IPromptQualityEvaluator, DeterministicPromptQualityEvaluator>();
-            services.AddScoped<IPromptProcessingRecordRepository, PromptProcessingRecordRepository>();
+            services.AddScoped<PromptProcessingRecordRepository>();
         }
 
         // Phase 12: Prompt Intelligence Evaluation, Experimentation & Observability
@@ -247,8 +244,8 @@ public static class ServiceCollectionExtensions
         // Metrics
         services.AddSingleton<IPromptIntelligenceMetrics, InMemoryPromptMetrics>();
 
-        // Background history retention worker (only when persistence is available)
-        if (promptIntelligencePersistence && !useInMemory && promptIntelligenceOptions.HistoryRetention.Enabled)
+        // Background history retention worker
+        if (promptIntelligenceOptions.HistoryRetention.Enabled)
         {
             services.AddHostedService<PromptHistoryRetentionWorker>();
         }

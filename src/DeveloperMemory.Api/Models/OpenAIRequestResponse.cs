@@ -51,6 +51,22 @@ public class OpenAIChatCompletionRequest
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public StreamOptions? StreamOptions { get; set; }
 
+    [JsonPropertyName("seed")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? Seed { get; set; }
+
+    [JsonPropertyName("tools")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ToolDefinition>? Tools { get; set; }
+
+    [JsonPropertyName("tool_choice")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public object? ToolChoice { get; set; }
+
+    [JsonPropertyName("logit_bias")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, int>? LogitBias { get; set; }
+
     // ── DeveloperMemory extensions (non-standard, optional) ──
 
     [JsonPropertyName("project")]
@@ -75,6 +91,26 @@ public class OpenAIChatCompletionRequest
     /// </summary>
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+}
+
+public class ToolDefinition
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "function";
+
+    [JsonPropertyName("function")]
+    public ToolFunctionDefinition Function { get; set; } = new();
+}public class ToolFunctionDefinition
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("description")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Description { get; set; }
+
+    [JsonPropertyName("parameters")]
+    public JsonElement Parameters { get; set; } = JsonDocument.Parse("{}").RootElement.Clone();
 }
 
 public class StreamOptions

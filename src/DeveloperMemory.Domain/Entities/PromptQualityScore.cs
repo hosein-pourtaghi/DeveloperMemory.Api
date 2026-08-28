@@ -39,9 +39,6 @@ public class PromptQualityScore
     /// <summary>Issues found during evaluation.</summary>
     public List<string> Issues { get; set; } = [];
 
-    /// <summary>Recommendations for improvement.</summary>
-    public List<string> Recommendations { get; set; } = [];
-
     /// <summary>
     /// Computes the overall score from dimension scores.
     /// </summary>

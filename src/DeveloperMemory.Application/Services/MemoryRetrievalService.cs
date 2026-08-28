@@ -17,19 +17,18 @@ namespace DeveloperMemory.Application.Services;
 /// </summary>
 public class MemoryRetrievalService : IMemoryRetrievalService
 {
-    private readonly IRetrievalProviderResolver _providerResolver;
+    private readonly IMemoryRetrievalProvider _retrievalProvider;
     private readonly IRetrievalRanker _ranker;
     private readonly IContextBudgeter _budgeter;
     private readonly ILogger<MemoryRetrievalService> _logger;
 
     public MemoryRetrievalService(
         IMemoryRetrievalProvider retrievalProvider,
-        IRetrievalProviderResolver providerResolver,
         IRetrievalRanker ranker,
         IContextBudgeter budgeter,
         ILogger<MemoryRetrievalService> logger)
     {
-        _providerResolver = providerResolver;
+        _retrievalProvider = retrievalProvider;
         _ranker = ranker;
         _budgeter = budgeter;
         _logger = logger;
@@ -43,28 +42,12 @@ public class MemoryRetrievalService : IMemoryRetrievalService
         var stopwatch = Stopwatch.StartNew();
         var metadata = new RetrievalMetadata
         {
-            RetrievalProvider = "keyword"
+            RetrievalProvider = _retrievalProvider.ProviderName
         };
 
         try
         {
             // ── Stage 1: Scope Resolution ──
-            if (string.IsNullOrWhiteSpace(request.OwnerId))
-            {
-                return new RetrievedMemoriesResult
-                {
-                    Memories = [],
-                    Metadata = new RetrievalMetadata
-                    {
-                        RetrievalProvider = "keyword",
-                        EligibleScopes = []
-                    }
-                };
-            }
-
-            request.MaximumResults = Math.Clamp(request.MaximumResults, 1, 100);
-            request.ContextTokenBudget = Math.Max(0, request.ContextTokenBudget);
-
             var eligibleScopes = ScopeResolver.ResolveEligibleScopes(request);
             metadata.EligibleScopes = eligibleScopes;
 
@@ -72,17 +55,14 @@ public class MemoryRetrievalService : IMemoryRetrievalService
                 "Retrieval scope resolution: query={Query}, projectId={ProjectId}, scopes={Scopes}",
                 TruncateLog(request.Query), request.ProjectId, string.Join(",", eligibleScopes));
 
-            // ── Stage 2: Candidate Retrieval (with provider-level filtering) ──
-            var provider = _providerResolver.Resolve(request.Mode);
-            metadata.RetrievalProvider = provider.ProviderName;
-            var scoredCandidates = await provider.GetScoredCandidatesAsync(request, ct);
-            metadata.CandidateCount = scoredCandidates.Count;
+            // ── Stage 2: Candidate Retrieval (with keyword/DB filtering) ──
+            var candidates = await _retrievalProvider.GetCandidatesAsync(request, ct);
+            metadata.CandidateCount = candidates.Count;
 
-            _logger.LogDebug("Retrieved {Count} candidates from provider {Provider}", scoredCandidates.Count, provider.ProviderName);
+            _logger.LogDebug("Retrieved {Count} candidates from provider", candidates.Count);
 
             // ── Stage 3: Privacy / Isolation Filtering ──
-            var privacyFiltered = PrivacyFilter.FilterByPrivacy(
-                scoredCandidates.Select(candidate => candidate.Memory).ToList(), request, eligibleScopes);
+            var privacyFiltered = PrivacyFilter.FilterByPrivacy(candidates, request, eligibleScopes);
 
             // ── Stage 4: Lifecycle Filtering ──
             var lifecycleFiltered = LifecycleFilter.FilterByLifecycle(privacyFiltered);
@@ -90,22 +70,11 @@ public class MemoryRetrievalService : IMemoryRetrievalService
 
             _logger.LogDebug(
                 "After privacy+lifecycle filtering: {Eligible} eligible from {Candidate} candidates",
-                lifecycleFiltered.Count, scoredCandidates.Count);
+                lifecycleFiltered.Count, candidates.Count);
 
             // ── Stage 5: Convert to RetrievedMemory ──
-            var semanticScores = scoredCandidates
-                .Where(candidate => candidate.SemanticScore.HasValue)
-                .ToDictionary(candidate => candidate.Memory.Id, candidate => candidate.SemanticScore!.Value);
-
             var retrievedMemories = lifecycleFiltered.Select(m =>
-            {
-                var retrieved = MapToRetrievedMemory(m.Memory, m.EligibilityReason);
-                if (semanticScores.TryGetValue(m.Memory.Id, out var semanticScore))
-                {
-                    retrieved.SemanticRelevanceScore = semanticScore;
-                }
-                return retrieved;
-            }).ToList();
+                MapToRetrievedMemory(m.Memory, m.EligibilityReason)).ToList();
 
             // ── Stage 6: Relevance Ranking ──
             var rankingStart = Stopwatch.StartNew();
@@ -193,6 +162,8 @@ public class MemoryRetrievalService : IMemoryRetrievalService
             UserId = entry.UserId,
             Classification = entry.Classification,
             Importance = entry.Importance,
+            Confidence = entry.Confidence,
+            MemoryType = entry.MemoryType,
             Source = entry.Source,
             Tags = tags,
             UpdatedAt = entry.UpdatedAt,

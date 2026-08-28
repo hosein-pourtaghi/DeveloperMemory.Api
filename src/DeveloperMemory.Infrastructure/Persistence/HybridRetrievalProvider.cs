@@ -34,27 +34,19 @@ public class HybridRetrievalProvider : IMemoryRetrievalProvider
 
     public string ProviderName => "hybrid";
 
-    public bool IsAvailable => _lexicalProvider.IsAvailable;
+    public bool IsAvailable => true;
 
     public async Task<List<MemoryEntry>> GetCandidatesAsync(
         RetrievalRequest request,
         CancellationToken ct = default)
     {
-        var candidates = await GetScoredCandidatesAsync(request, ct);
-        return candidates.Select(candidate => candidate.Memory).ToList();
-    }
-
-    public async Task<List<RetrievalCandidate>> GetScoredCandidatesAsync(
-        RetrievalRequest request,
-        CancellationToken ct = default)
-    {
-        var lexicalCandidates = new List<RetrievalCandidate>();
-        var semanticCandidates = new List<RetrievalCandidate>();
+        var lexicalCandidates = new List<MemoryEntry>();
+        var semanticCandidates = new List<MemoryEntry>();
 
         // Run lexical retrieval (always available)
         try
         {
-            lexicalCandidates = await _lexicalProvider.GetScoredCandidatesAsync(request, ct);
+            lexicalCandidates = await _lexicalProvider.GetCandidatesAsync(request, ct);
         }
         catch (Exception ex)
         {
@@ -62,11 +54,11 @@ public class HybridRetrievalProvider : IMemoryRetrievalProvider
         }
 
         // Run semantic retrieval (optional, may fail)
-        if (_semanticProvider.IsAvailable)
+        if (true)
         {
             try
             {
-                semanticCandidates = await _semanticProvider.GetScoredCandidatesAsync(request, ct);
+                semanticCandidates = await _semanticProvider.GetCandidatesAsync(request, ct);
             }
             catch (Exception ex)
             {
@@ -86,36 +78,30 @@ public class HybridRetrievalProvider : IMemoryRetrievalProvider
 
     /// <summary>
     /// Merges lexical and semantic candidates, deduplicating by memory ID.
-    /// Lexical metadata is retained while semantic scores are added when available.
+    /// Lexical results are prioritized (appear first) when both sources match.
     /// </summary>
-    private static List<RetrievalCandidate> MergeCandidates(
-        List<RetrievalCandidate> lexical,
-        List<RetrievalCandidate> semantic)
+    private static List<MemoryEntry> MergeCandidates(
+        List<MemoryEntry> lexical,
+        List<MemoryEntry> semantic)
     {
-        var byId = new Dictionary<Guid, RetrievalCandidate>();
-        var result = new List<RetrievalCandidate>();
+        var seen = new HashSet<Guid>();
+        var result = new List<MemoryEntry>();
 
-        foreach (var candidate in lexical)
+        // Add lexical candidates first (higher priority)
+        foreach (var memory in lexical)
         {
-            if (byId.TryAdd(candidate.Memory.Id, candidate))
+            if (seen.Add(memory.Id))
             {
-                result.Add(candidate);
+                result.Add(memory);
             }
         }
 
-        foreach (var candidate in semantic)
+        // Add semantic candidates that weren't already found lexically
+        foreach (var memory in semantic)
         {
-            if (byId.TryGetValue(candidate.Memory.Id, out var existing))
+            if (seen.Add(memory.Id))
             {
-                if (candidate.SemanticScore.HasValue)
-                {
-                    existing.SemanticScore = candidate.SemanticScore;
-                }
-            }
-            else
-            {
-                byId.Add(candidate.Memory.Id, candidate);
-                result.Add(candidate);
+                result.Add(memory);
             }
         }
 

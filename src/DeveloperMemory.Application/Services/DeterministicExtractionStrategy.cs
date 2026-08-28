@@ -68,7 +68,7 @@ public partial class DeterministicExtractionStrategy : IMemoryExtractionStrategy
                     MemoryType = MemoryType.UserPreference,
                     Importance = 0.6,
                     Confidence = 0.8,
-                    Source = request.Source ?? "extraction",
+                    Source = "extraction",
                     ExtractionReason = $"Matched preference pattern: {pattern}"
                 });
             }
@@ -98,7 +98,7 @@ public partial class DeterministicExtractionStrategy : IMemoryExtractionStrategy
                     MemoryType = MemoryType.Instruction,
                     Importance = 0.9,
                     Confidence = 0.85,
-                    Source = request.Source ?? "extraction",
+                    Source = "extraction",
                     ExtractionReason = $"Matched instruction pattern: {pattern}"
                 });
             }
@@ -128,7 +128,7 @@ public partial class DeterministicExtractionStrategy : IMemoryExtractionStrategy
                     MemoryType = MemoryType.Fact,
                     Importance = 0.5,
                     Confidence = 0.7,
-                    Source = request.Source ?? "extraction",
+                    Source = "extraction",
                     ExtractionReason = $"Matched fact pattern: {pattern}"
                 });
             }
@@ -158,7 +158,7 @@ public partial class DeterministicExtractionStrategy : IMemoryExtractionStrategy
                     MemoryType = MemoryType.UserConstraint,
                     Importance = 0.8,
                     Confidence = 0.75,
-                    Source = request.Source ?? "extraction",
+                    Source = "extraction",
                     ExtractionReason = $"Matched constraint pattern: {pattern}"
                 });
             }

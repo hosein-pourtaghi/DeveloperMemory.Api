@@ -67,7 +67,7 @@ public class HybridRanker : IRetrievalRanker
 
             // Normalize other signals to [0,1]
             var confidenceScore = Math.Clamp(candidate.Confidence, 0.0, 1.0);
-            var scopeScore = NormalizeScopeRelevance(candidate);
+            var scopeScore = CalculateScopeRelevance(candidate);
             var projectScore = CalculateProjectRelevance(candidate, request);
             var recencyScore = CalculateRecencyScore(candidate);
             var importanceScore = Math.Clamp(candidate.Importance, 0.0, 1.0);
@@ -184,17 +184,5 @@ public class HybridRanker : IRetrievalRanker
             .Count(t => request.RequiredCategories.Contains(t, StringComparer.OrdinalIgnoreCase));
 
         return matchCount > 0 ? 1.0 : 0.2;
-    }
-
-    private static double NormalizeScopeRelevance(RetrievedMemory memory)
-    {
-        return memory.Scope switch
-        {
-            MemoryScope.Project => 0.9,
-            MemoryScope.Workspace => 0.8,
-            MemoryScope.Global => 0.6,
-            MemoryScope.Private => 0.7,
-            _ => 0.5
-        };
     }
 }

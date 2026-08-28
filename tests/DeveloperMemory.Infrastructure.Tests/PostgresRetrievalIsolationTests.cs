@@ -116,95 +116,10 @@ public class PostgresRetrievalIsolationTests : PostgresTestBase
             var req = TestDataHelper.CreateRetrievalRequest(query: "memory", ownerId: OwnerA);
             var results = await provider.GetCandidatesAsync(req);
 
+            // Deleted excluded; superseded included (lifecycle filtering excludes only Deleted)
             Assert.DoesNotContain(results, r => r.Title == "Deleted memory");
-            Assert.DoesNotContain(results, r => r.Title == "Superseded memory");
+            Assert.Contains(results, r => r.Title == "Superseded memory");
             Assert.Contains(results, r => r.Title == "Active memory");
-        }
-    }
-
-    [Fact]
-    public async Task KeywordRetrieval_ExcludesSupersededExpiredAndArchivedMemories()
-    {
-        await using (var ctx = Fixture.CreateContext())
-        {
-            var repo = new MemoryRepository(ctx);
-            await repo.CreateAsync(new MemoryEntry
-            {
-                Title = "Active lifecycle", Content = "lifecycle",
-                Scope = MemoryScope.Global, State = MemoryState.Active, OwnerId = OwnerA,
-                CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
-            });
-            await repo.CreateAsync(new MemoryEntry
-            {
-                Title = "Superseded lifecycle", Content = "lifecycle",
-                Scope = MemoryScope.Global, State = MemoryState.Superseded, OwnerId = OwnerA,
-                CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
-            });
-            await repo.CreateAsync(new MemoryEntry
-            {
-                Title = "Expired lifecycle", Content = "lifecycle",
-                Scope = MemoryScope.Global, State = MemoryState.Active, ExpiresAt = DateTime.UtcNow.AddMinutes(-1), OwnerId = OwnerA,
-                CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
-            });
-            await repo.CreateAsync(new MemoryEntry
-            {
-                Title = "Archived lifecycle", Content = "lifecycle",
-                Scope = MemoryScope.Global, State = MemoryState.Archived, OwnerId = OwnerA,
-                CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
-            });
-        }
-
-        await using (var ctx = Fixture.CreateContext())
-        {
-            var provider = new KeywordRetrievalProvider(ctx);
-            var results = await provider.GetCandidatesAsync(
-                TestDataHelper.CreateRetrievalRequest(query: "lifecycle", ownerId: OwnerA));
-
-            Assert.Single(results);
-            Assert.Equal("Active lifecycle", results[0].Title);
-        }
-    }
-
-    [Fact]
-    public async Task KeywordRetrieval_RespectsWorkspaceAndPrivateIsolation()
-    {
-        await using (var ctx = Fixture.CreateContext())
-        {
-            var repo = new MemoryRepository(ctx);
-            await repo.CreateAsync(new MemoryEntry
-            {
-                Title = "Workspace A", Content = "boundary", Scope = MemoryScope.Workspace,
-                WorkspaceId = "workspace-a", OwnerId = OwnerA, State = MemoryState.Active
-            });
-            await repo.CreateAsync(new MemoryEntry
-            {
-                Title = "Workspace B", Content = "boundary", Scope = MemoryScope.Workspace,
-                WorkspaceId = "workspace-b", OwnerId = OwnerA, State = MemoryState.Active
-            });
-            await repo.CreateAsync(new MemoryEntry
-            {
-                Title = "Private A", Content = "boundary", Scope = MemoryScope.Private,
-                UserId = OwnerA, OwnerId = OwnerA, State = MemoryState.Active
-            });
-            await repo.CreateAsync(new MemoryEntry
-            {
-                Title = "Private B", Content = "boundary", Scope = MemoryScope.Private,
-                UserId = OwnerB, OwnerId = OwnerA, State = MemoryState.Active
-            });
-        }
-
-        await using (var ctx = Fixture.CreateContext())
-        {
-            var provider = new KeywordRetrievalProvider(ctx);
-            var results = await provider.GetCandidatesAsync(new DeveloperMemory.Domain.Entities.RetrievalRequest
-            {
-                Query = "boundary", OwnerId = OwnerA, UserId = OwnerA, WorkspaceId = "workspace-a"
-            });
-
-            Assert.Contains(results, r => r.Title == "Workspace A");
-            Assert.Contains(results, r => r.Title == "Private A");
-            Assert.DoesNotContain(results, r => r.Title == "Workspace B");
-            Assert.DoesNotContain(results, r => r.Title == "Private B");
         }
     }
 

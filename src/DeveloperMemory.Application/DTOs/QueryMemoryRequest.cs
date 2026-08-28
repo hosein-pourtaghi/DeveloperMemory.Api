@@ -11,9 +11,6 @@ public class QueryMemoryRequest
     /// <summary>The search query text.</summary>
     public string Query { get; set; } = string.Empty;
 
-    /// <summary>Retrieval strategy. Auto selects hybrid when semantic retrieval is available.</summary>
-    public RetrievalMode Mode { get; set; } = RetrievalMode.Auto;
-
     /// <summary>Filter by memory scope.</summary>
     public MemoryScope? Scope { get; set; }
 

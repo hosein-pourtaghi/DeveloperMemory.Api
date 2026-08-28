@@ -186,7 +186,6 @@ public class MemoryController : ControllerBase
             ProjectId = request.ProjectId,
             WorkspaceId = request.WorkspaceId,
             Query = request.Query,
-            Mode = request.Mode,
             MaximumResults = maxResults * 3,
             ContextTokenBudget = 100000
         };
@@ -431,11 +430,10 @@ public class MemoryController : ControllerBase
         var retrievalRequest = new RetrievalRequest
         {
             OwnerId = _currentUser.UserId,
-            UserId = _currentUser.UserId,
+            UserId = request.UserId,
             ProjectId = request.ProjectId,
             WorkspaceId = request.WorkspaceId,
             Query = request.Query,
-            Mode = request.Mode,
             RequestedScopes = request.RequestedScopes,
             MaximumResults = effectiveMaxResults,
             ContextTokenBudget = effectiveBudget,

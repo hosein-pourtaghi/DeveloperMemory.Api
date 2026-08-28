@@ -9,26 +9,46 @@ namespace DeveloperMemory.Application.Services;
 /// </summary>
 public sealed class PromptProcessingHistoryService : IPromptProcessingHistoryService
 {
+    private const int MaximumResults = 100;
     private readonly IPromptProcessingRecordRepository _repository;
 
-    public PromptProcessingHistoryService(        IPromptProcessingRecordRepository repository)
+    public PromptProcessingHistoryService(IPromptProcessingRecordRepository repository)
     {
         _repository = repository;
     }
 
-    public async Task<IReadOnlyList<PromptProcessingRecord>> GetRecentAsync(
+    public Task<IReadOnlyList<PromptProcessingRecord>> GetRecentAsync(
         string ownerId,
+        int maxResults = 50,
+        CancellationToken ct = default)
+    {
+        return QueryAsync(ownerId, maxResults: maxResults, ct: ct);
+    }
+
+    public async Task<IReadOnlyList<PromptProcessingRecord>> QueryAsync(
+        string ownerId,
+        Guid? profileId = null,
+        DateTime? from = null,
+        DateTime? to = null,
+        string? optimizationMode = null,
+        string? validationStatus = null,
+        bool? fallbackUsed = null,
         int maxResults = 50,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(ownerId))
             return [];
 
-        var records = await _repository.GetRecentAsync(100, ct);
-        return records
-            .Where(record => string.Equals(record.UserId, ownerId, StringComparison.Ordinal))
-            .Take(Math.Clamp(maxResults, 1, 100))
-            .ToList();
+        return await _repository.QueryAsync(
+            ownerId,
+            profileId,
+            from,
+            to,
+            optimizationMode,
+            validationStatus,
+            fallbackUsed,
+            Math.Clamp(maxResults, 1, MaximumResults),
+            ct);
     }
 
     public async Task<PromptProcessingRecord?> GetByIdAsync(
@@ -39,9 +59,6 @@ public sealed class PromptProcessingHistoryService : IPromptProcessingHistorySer
         if (id == Guid.Empty || string.IsNullOrWhiteSpace(ownerId))
             return null;
 
-        var record = await _repository.GetByIdAsync(id, ct);
-        return record != null && string.Equals(record.UserId, ownerId, StringComparison.Ordinal)
-            ? record
-            : null;
+        return await _repository.GetByIdAsync(id, ownerId, ct);
     }
 }

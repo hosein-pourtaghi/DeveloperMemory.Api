@@ -257,8 +257,16 @@ public class PromptIntelligenceController : ControllerBase
         [FromQuery] int maxResults = 50,
         CancellationToken ct = default)
     {
-        var records = await _historyService.GetRecentAsync(
-            _currentUser.UserId, maxResults, ct);
+        var records = await _historyService.QueryAsync(
+            _currentUser.UserId,
+            profileId,
+            from,
+            to,
+            optimizationMode,
+            validationStatus,
+            fallbackUsed,
+            maxResults,
+            ct);
 
         return Ok(records.Select(r => new
         {

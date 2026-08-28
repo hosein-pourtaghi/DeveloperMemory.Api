@@ -12,6 +12,17 @@ public interface IPromptProcessingHistoryService
         int maxResults = 50,
         CancellationToken ct = default);
 
+    Task<IReadOnlyList<PromptProcessingRecord>> QueryAsync(
+        string ownerId,
+        Guid? profileId = null,
+        DateTime? from = null,
+        DateTime? to = null,
+        string? optimizationMode = null,
+        string? validationStatus = null,
+        bool? fallbackUsed = null,
+        int maxResults = 50,
+        CancellationToken ct = default);
+
     Task<PromptProcessingRecord?> GetByIdAsync(
         Guid id,
         string ownerId,

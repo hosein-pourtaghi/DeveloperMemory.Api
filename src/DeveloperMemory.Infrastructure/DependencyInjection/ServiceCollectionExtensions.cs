@@ -206,7 +206,7 @@ public static class ServiceCollectionExtensions
             services.AddScoped<IPromptProfileProvider, PromptProfileRepository>();
             services.AddScoped<IPromptIntelligenceAudit, PromptIntelligenceAudit>();
             services.AddScoped<IPromptHistoryRetentionService, PromptHistoryRetentionService>();
-            services.AddScoped<PromptProcessingRecordRepository>();
+            services.AddScoped<IPromptProcessingRecordRepository, PromptProcessingRecordRepository>();
             services.AddScoped<IPromptQualityEvaluator, DeterministicPromptQualityEvaluator>();
         }
         else
@@ -214,7 +214,7 @@ public static class ServiceCollectionExtensions
             // Fallback: in-memory audit for testing
             services.AddSingleton<IPromptIntelligenceAudit, InMemoryPromptAudit>();
             services.AddSingleton<IPromptQualityEvaluator, DeterministicPromptQualityEvaluator>();
-            services.AddScoped<PromptProcessingRecordRepository>();
+            services.AddScoped<IPromptProcessingRecordRepository, PromptProcessingRecordRepository>();
         }
 
         // Phase 12: Prompt Intelligence Evaluation, Experimentation & Observability

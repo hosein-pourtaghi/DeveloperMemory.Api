@@ -49,10 +49,10 @@ public static class ServiceCollectionExtensions
         // Application services
         services.AddScoped<IMemoryService, MemoryService>();
         services.AddScoped<IProjectService, ProjectService>();
+        services.AddScoped<IPromptProcessingHistoryService, PromptProcessingHistoryService>();
 
         // Phase 3: Retrieval pipeline
         services.AddScoped<KeywordRetrievalProvider>();
-        services.AddScoped<IMemoryRetrievalProvider>(sp => sp.GetRequiredService<KeywordRetrievalProvider>());
         services.AddScoped<IRetrievalRanker, RelevanceRanker>();
         services.AddScoped<IContextBudgeter, CharacterContextBudgeter>();
         services.AddScoped<IMemoryRetrievalService, MemoryRetrievalService>();
@@ -111,9 +111,11 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<IEmbeddingCache, InMemoryEmbeddingCache>();
         }
 
-        // Semantic retrieval provider
+        // Semantic/hybrid retrieval providers
         services.AddScoped<SemanticRetrievalProvider>();
         services.AddScoped<HybridRetrievalProvider>();
+        services.AddScoped<IRetrievalProviderResolver, ConfiguredRetrievalProviderResolver>();
+        services.AddScoped<IMemoryRetrievalProvider>(sp => sp.GetRequiredService<KeywordRetrievalProvider>());
 
         // Phase 8: LLM-Assisted Memory Intelligence
         var memoryIntelligenceOptions = new MemoryIntelligenceOptions();

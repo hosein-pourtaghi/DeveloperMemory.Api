@@ -90,6 +90,11 @@ public class RetrievedMemory
     public double Confidence { get; set; }
 
     /// <summary>
+    /// Optional semantic similarity supplied by a semantic retrieval provider.
+    /// </summary>
+    public double? SemanticRelevanceScore { get; set; }
+
+    /// <summary>
     /// The final relevance score after ranking.
     /// </summary>
     public double RelevanceScore { get; set; }
@@ -119,6 +124,11 @@ public class RetrievalScoreBreakdown
     /// Score from text/keyword relevance to the query.
     /// </summary>
     public double TextRelevance { get; set; }
+
+    /// <summary>
+    /// Similarity score supplied by semantic retrieval, when available.
+    /// </summary>
+    public double SemanticRelevance { get; set; }
 
     /// <summary>
     /// Score from scope relevance (Global > Project > Workspace > Private).

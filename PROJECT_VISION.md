@@ -57,7 +57,7 @@ The project has evolved into a **Clean Architecture-based system** with:
 - **Mode detection and model selection**: Heuristic plan/build detection with automatic model routing
 - **Token tracking and request logging**: Three-stage token estimation with daily file logging
 - **Observability foundation**: OpenTelemetry integration (configurable)
-- **Test infrastructure**: xUnit tests for repository layer using EF Core InMemory
+- **Test infrastructure**: xUnit tests for application/infrastructure/API layers using EF Core InMemory, plus native PostgreSQL integration coverage
 
 ## 5. Where the Project Is Going
 
@@ -182,10 +182,16 @@ Retrieval should not be "search all and return everything." The target retrieval
 The intended retrieval evolution:
 
 ```
-Current:  Keyword-based text search (implemented)
-Target:   Semantic retrieval, vector search, hybrid search,
-          metadata/project/scope filtering, lifecycle-aware
-          filtering, importance-aware ranking
+Current:  Keyword retrieval is implemented with owner, scope/project,
+          workspace/private, category, lifecycle, and expiration filtering;
+          deterministic relevance ranking and bounded result selection
+Implemented but optional: Semantic/vector and hybrid providers are selectable
+          through the application retrieval pipeline when configured; semantic
+          score propagation, hybrid deduplication, and normalized ranking are
+          tested; Auto falls back to keyword retrieval when unavailable
+Target:   Provider-selectable semantic and hybrid retrieval with
+          metadata/project/scope filtering, lifecycle-aware filtering,
+          and importance-aware ranking
 ```
 
 ---
@@ -231,7 +237,7 @@ Response
 Optional Memory Capture Pipeline
 ```
 
-**Current status**: The system has building blocks — `PromptBuilder` (context assembly), `ModeDetector` (heuristic mode detection), `KnowledgeService` (file-based knowledge), `ProfileService` (file-based profiles), `MemoryService` (persistent memory retrieval), and request enrichment in the OpenAI controller. These are foundational components, not the complete Prompt Intelligence Engine. The full engine is a planned architectural evolution.
+**Current status**: The system has building blocks — `PromptBuilder` (context assembly), `ModeDetector` (heuristic mode detection), `KnowledgeService` (file-based knowledge), `ProfileService` (file-based profiles), `MemoryService` (persistent memory retrieval), `PromptIntelligenceEngine` (deterministic analysis/context/composition pipeline), and request enrichment in the OpenAI controller. External LLM forwarding remains provider-dependent, and the full autonomous intelligence vision remains a planned evolution.
 
 ---
 
@@ -243,7 +249,7 @@ This is a fixed architectural principle. DeveloperMemory.Api must be modular and
 |---|---|---|
 | Model/LLM Providers | FreeLlmApiClient (OpenAI-compatible) | IModelGateway |
 | Memory Persistence | PostgreSQL + EF Core | IMemoryRepository (exists) |
-| Retrieval | Keyword search (EF Core Contains) | IMemoryRetriever |
+| Retrieval | Keyword retrieval is default; semantic/vector and hybrid providers are selectable with safe fallback and unified ranking | IMemoryRetrievalService / IMemoryRetrievalProvider |
 | Memory Evaluation | None (manual creation) | IMemoryIntelligenceService |
 | Prompt Intelligence | PromptBuilder (basic enrichment) | IPromptIntelligenceEngine |
 | Project Context | ProjectService + MemoryService | IProjectContextProvider |

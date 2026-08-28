@@ -185,9 +185,9 @@ API / Gateway Layer (Controller)
         ▼
 IPromptIntelligenceEngine ✅ (Phase 7)
         │
-        ├── IMemoryRetriever ✅ (Phase 5)
-        │     └── Keyword retrieval
-        │     └── Future: vector/hybrid retrieval
+        ├── IMemoryRetrievalService ✅
+        │     └── Lexical, semantic, and hybrid selection with safe fallback
+        │     └── Ownership/scope/lifecycle safeguards and semantic score propagation
         ├── Profile Loading
         └── Prompt Assembly
         │
@@ -322,6 +322,7 @@ See [PROJECT_VISION.md](PROJECT_VISION.md) for the full vision.
 | `IMemoryRetriever → ContextRetrievalService` | Singleton | Orchestrates memory + knowledge retrieval |
 | `IPromptIntelligenceEngine → PromptIntelligenceEngine` | Scoped | 6-stage intelligence pipeline (Application layer) |
 | `IMemoryRetrievalService → MemoryRetrievalService` | Scoped | Privacy-aware retrieval pipeline (Application layer) |
+| `IPromptProcessingHistoryService → PromptProcessingHistoryService` | Scoped | Owner-scoped prompt processing history use case |
 | `IPromptAnalyzer → DeterministicPromptAnalyzer` | Scoped | Request analysis (Application layer) |
 | `IModelGateway → FreeLlmApiClient` | Transient | HTTP client for providers |
 | `FreeLlmApiClient` | Transient (HttpClient) | Concrete provider adapter |

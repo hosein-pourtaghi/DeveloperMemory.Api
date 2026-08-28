@@ -43,6 +43,14 @@ public class SemanticRetrievalProvider : IMemoryRetrievalProvider
         RetrievalRequest request,
         CancellationToken ct = default)
     {
+        var candidates = await GetScoredCandidatesAsync(request, ct);
+        return candidates.Select(candidate => candidate.Memory).ToList();
+    }
+
+    public async Task<List<RetrievalCandidate>> GetScoredCandidatesAsync(
+        RetrievalRequest request,
+        CancellationToken ct = default)
+    {
         if (!IsAvailable)
         {
             _logger.LogDebug("Semantic provider unavailable, returning empty candidates");
@@ -78,9 +86,12 @@ public class SemanticRetrievalProvider : IMemoryRetrievalProvider
 
             // Step 3: Load matching memories from database (with owner filtering)
             var memoryIds = searchResults.Select(r => r.MemoryId).ToList();
+            var now = DateTime.UtcNow;
             var memoriesQuery = _context.MemoryEntries
                 .AsNoTracking()
-                .Where(e => memoryIds.Contains(e.Id) && e.State != MemoryState.Deleted);
+                .Where(e => memoryIds.Contains(e.Id) &&
+                            (e.State == MemoryState.Active || e.State == MemoryState.Updated) &&
+                            (!e.ExpiresAt.HasValue || e.ExpiresAt.Value > now));
 
             // Owner isolation — mandatory at DB level, fail closed
             if (string.IsNullOrEmpty(request.OwnerId))
@@ -93,12 +104,19 @@ public class SemanticRetrievalProvider : IMemoryRetrievalProvider
 
             // Step 4: Apply scope/project/workspace filtering
             var filtered = ApplyScopeFilter(memories, request);
+            var similarityByMemoryId = searchResults.ToDictionary(r => r.MemoryId, r => r.SimilarityScore);
 
             _logger.LogDebug(
                 "Semantic retrieval: {VectorResults} vector results, {Loaded} loaded, {Filtered} after scope filter",
                 searchResults.Count, memories.Count, filtered.Count);
 
-            return filtered;
+            return filtered
+                .Select(memory => new RetrievalCandidate
+                {
+                    Memory = memory,
+                    SemanticScore = similarityByMemoryId.GetValueOrDefault(memory.Id)
+                })
+                .ToList();
         }
         catch (Exception ex)
         {
@@ -115,6 +133,12 @@ public class SemanticRetrievalProvider : IMemoryRetrievalProvider
 
         foreach (var memory in memories)
         {
+            if (request.RequestedScopes != null && request.RequestedScopes.Count > 0 &&
+                !request.RequestedScopes.Contains(memory.Scope))
+            {
+                continue;
+            }
+
             // Global memories are always eligible
             if (memory.Scope == MemoryScope.Global)
             {
@@ -136,6 +160,7 @@ public class SemanticRetrievalProvider : IMemoryRetrievalProvider
             if (memory.Scope == MemoryScope.Workspace)
             {
                 if (!string.IsNullOrEmpty(request.WorkspaceId) &&
+                    !string.IsNullOrEmpty(memory.WorkspaceId) &&
                     string.Equals(memory.WorkspaceId, request.WorkspaceId, StringComparison.Ordinal))
                 {
                     result.Add(memory);
@@ -147,6 +172,7 @@ public class SemanticRetrievalProvider : IMemoryRetrievalProvider
             if (memory.Scope == MemoryScope.Private)
             {
                 if (!string.IsNullOrEmpty(request.UserId) &&
+                    !string.IsNullOrEmpty(memory.UserId) &&
                     string.Equals(memory.UserId, request.UserId, StringComparison.Ordinal))
                 {
                     result.Add(memory);

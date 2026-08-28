@@ -13,6 +13,11 @@ public class RetrieveRequest
     public string Query { get; set; } = string.Empty;
 
     /// <summary>
+    /// Retrieval strategy. Auto selects hybrid when semantic retrieval is available.
+    /// </summary>
+    public RetrievalMode Mode { get; set; } = RetrievalMode.Auto;
+
+    /// <summary>
     /// The current project context.
     /// </summary>
     public Guid? ProjectId { get; set; }

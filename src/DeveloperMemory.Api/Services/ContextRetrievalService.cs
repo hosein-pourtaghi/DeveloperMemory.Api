@@ -2,22 +2,26 @@ using DeveloperMemory.Api.Abstractions;
 using DeveloperMemory.Api.Models;
 using DeveloperMemory.Application.Contracts;
 using DeveloperMemory.Application.DTOs;
+using DeveloperMemory.Domain.Entities;
 
 namespace DeveloperMemory.Api.Services;
 
 public class ContextRetrievalService : IMemoryRetriever
 {
     private readonly IMemoryService _memoryService;
+    private readonly ICurrentUser _currentUser;
     private readonly KnowledgeService _knowledgeService;
     private readonly ILogger<ContextRetrievalService> _logger;
 
     public ContextRetrievalService(
         IMemoryService memoryService,
         KnowledgeService knowledgeService,
+        ICurrentUser currentUser,
         ILogger<ContextRetrievalService> logger)
     {
         _memoryService = memoryService;
         _knowledgeService = knowledgeService;
+        _currentUser = currentUser;
         _logger = logger;
     }
 
@@ -36,7 +40,7 @@ public class ContextRetrievalService : IMemoryRetriever
             {
                 memories = await _memoryService.SearchAsync(
                     query,
-                    ownerId: string.Empty,  // Legacy path: no owner context
+                    ownerId: _currentUser.UserId,
                     scope: null,
                     projectId: null,
                     ct: ct);

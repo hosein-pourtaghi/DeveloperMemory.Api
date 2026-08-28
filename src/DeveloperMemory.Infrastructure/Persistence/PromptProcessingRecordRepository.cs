@@ -1,4 +1,5 @@
 using DeveloperMemory.Domain.Entities;
+using DeveloperMemory.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -8,7 +9,7 @@ namespace DeveloperMemory.Infrastructure.Persistence;
 /// Repository for prompt processing records.
 /// Provides query capabilities for history endpoints.
 /// </summary>
-public class PromptProcessingRecordRepository
+public class PromptProcessingRecordRepository : IPromptProcessingRecordRepository
 {
     private readonly DeveloperMemoryDbContext _context;
     private readonly ILogger<PromptProcessingRecordRepository> _logger;

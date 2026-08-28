@@ -34,6 +34,12 @@ public class RetrievalRequest
     public string Query { get; set; } = string.Empty;
 
     /// <summary>
+    /// Requested retrieval strategy. Auto uses hybrid when semantic retrieval is available,
+    /// otherwise falls back to keyword retrieval.
+    /// </summary>
+    public RetrievalMode Mode { get; set; } = RetrievalMode.Auto;
+
+    /// <summary>
     /// Explicit scope filter. If null, all scopes are considered (subject to privacy rules).
     /// </summary>
     public List<MemoryScope>? RequestedScopes { get; set; }

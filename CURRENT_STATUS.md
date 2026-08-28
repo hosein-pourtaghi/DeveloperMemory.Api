@@ -1,6 +1,6 @@
 # Current Status
 
-**Last verified:** August 27, 2026 (Phase G — End-to-End Runtime Verification)
+**Last verified:** August 28, 2026 (Phase J.1 — Retrieval activation correction and verification)
 **Version:** .NET 10.0
 **Branch:** main
 
@@ -12,8 +12,8 @@
 Restore:      ✅ All projects restored
 Build:        ✅ 0 errors (Release configuration)
 Warnings:     68 (NuGet advisories only)
-Discovered:   598
-Passed:       598
+Discovered:   634
+Passed:       634
 Failed:       0
 Skipped:      0
 ```
@@ -22,11 +22,11 @@ Skipped:      0
 
 ```
 DeveloperMemory.Domain.Tests:            38
-DeveloperMemory.Application.Tests:      327
-DeveloperMemory.Infrastructure.Tests:    92
+DeveloperMemory.Application.Tests:      333
+DeveloperMemory.Infrastructure.Tests:   122
 DeveloperMemory.Api.Tests:              141
 ────────────────────────────────────────────
-TOTAL:                                  598
+TOTAL:                                  634
 ```
 
 ---
@@ -76,7 +76,8 @@ Failed:              0
 - Memory lifecycle (Active, Superseded, Expired, Archived, Deleted)
 - Memory Intelligence: extraction, conflict detection, ingestion
 - Prompt Intelligence: analysis, context assembly, optimization, evaluation
-- Retrieval: keyword, semantic, hybrid with owner isolation
+- Retrieval: keyword, semantic, and hybrid providers are selectable through the application retrieval service; Auto falls back to keyword when semantic retrieval is unavailable
+- Retrieval safeguards: owner, project, workspace, private-scope, lifecycle, category filtering, deterministic ranking, and bounded results
 - API Key authentication with persistent lifecycle management (PostgreSQL)
 - Ownership enforcement at repository, retrieval, and filter levels
 - Fail-closed OwnerId (missing OwnerId = no results)
@@ -121,9 +122,9 @@ Production keys are created via `POST /api/ApiKey/create` and stored in PostgreS
 ## Remaining Gaps
 
 ### Verification Gaps
-1. **PostgreSQL runtime ownership verification** — InMemory tested; PostgreSQL not runtime verified (Docker daemon not available)
-2. **Persistence after restart** — Cannot verify with InMemory backend (data lost on restart)
-3. **Rate-limit exhaustion** — Not tested at scale (too slow for smoke test)
+1. **External semantic runtime verification** — Semantic/hybrid selection and score propagation are implemented and unit-tested, but the default local configuration has no external embedding provider enabled, so semantic HTTP runtime behavior was not exercised.
+2. **HTTP retrieval integration coverage** — Retrieval behavior is covered at application/infrastructure layers; a dedicated authenticated Kestrel retrieval matrix remains optional follow-up work.
+3. **Rate-limit exhaustion** — Not tested at scale (too slow for smoke test).
 
 ### Intentionally Deferred
 4. **JWT for browser applications** — Out of scope for current architecture
@@ -131,4 +132,4 @@ Production keys are created via `POST /api/ApiKey/create` and stored in PostgreS
 6. **FreeLLMApi integration** — Requires valid API key (not configured)
 
 ### No Blockers
-The application is verified to work as intended in InMemory mode. PostgreSQL runtime verification is pending Docker/infrastructure availability.
+Keyword retrieval is verified against native PostgreSQL with fail-closed ownership, scope/project isolation, lifecycle filtering, deterministic ranking, and bounded results. Semantic and hybrid retrieval are now selectable through the application service when configured; the default local configuration remains keyword-only because no external embedding credentials are enabled. Docker was not used.

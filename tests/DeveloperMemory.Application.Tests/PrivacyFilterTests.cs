@@ -115,9 +115,9 @@ public class PrivacyFilterTests
     }
 
     [Fact]
-    public void WorkspaceMemory_WithNullStoredWorkspaceId_MatchesAnyWorkspaceContext()
+    public void WorkspaceMemory_WithNullStoredWorkspaceId_IsExcluded()
     {
-        // Legacy workspace memories without WorkspaceId are returned if workspace context is present
+        // A missing boundary identifier must fail closed rather than broaden access
         var legacyMemory = TestDataHelper.CreateMemory(
             scope: MemoryScope.Workspace, workspaceId: null);
         var request = TestDataHelper.CreateRetrievalRequest(workspaceId: "ws-1");
@@ -125,8 +125,8 @@ public class PrivacyFilterTests
         var eligibleScopes = ScopeResolver.ResolveEligibleScopes(request);
         var results = PrivacyFilter.FilterByPrivacy([legacyMemory], request, eligibleScopes);
 
-        results.Should().HaveCount(1,
-            "Legacy workspace memories without stored WorkspaceId should be returned when workspace context is present");
+        results.Should().BeEmpty(
+            "Workspace memories without a stored WorkspaceId cannot be safely isolated");
     }
 
     [Fact]
@@ -193,9 +193,9 @@ public class PrivacyFilterTests
     }
 
     [Fact]
-    public void PrivateMemory_WithNullStoredUserId_MatchesAnyUserContext()
+    public void PrivateMemory_WithNullStoredUserId_IsExcluded()
     {
-        // Legacy private memories without UserId are returned if user context is present
+        // A missing owner boundary must fail closed rather than broaden access
         var legacyMemory = TestDataHelper.CreateMemory(
             scope: MemoryScope.Private, userId: null);
         var request = TestDataHelper.CreateRetrievalRequest(userId: "user-1");
@@ -203,8 +203,8 @@ public class PrivacyFilterTests
         var eligibleScopes = ScopeResolver.ResolveEligibleScopes(request);
         var results = PrivacyFilter.FilterByPrivacy([legacyMemory], request, eligibleScopes);
 
-        results.Should().HaveCount(1,
-            "Legacy private memories without stored UserId should be returned when user context is present");
+        results.Should().BeEmpty(
+            "Private memories without a stored UserId cannot be safely isolated");
     }
 
     [Fact]

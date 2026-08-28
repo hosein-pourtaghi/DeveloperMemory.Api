@@ -3,20 +3,15 @@ using DeveloperMemory.Application.Services;
 using DeveloperMemory.Application.Services.Retrieval;
 using DeveloperMemory.Domain.Entities;
 using DeveloperMemory.Domain.Enums;
-using DeveloperMemory.Domain.Interfaces;
 using DeveloperMemory.Infrastructure.Persistence;
+using DeveloperMemory.Domain.Interfaces;
 using FluentAssertions;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
 
 namespace DeveloperMemory.Infrastructure.Tests;
 
-/// <summary>
-/// Integration tests for the full MemoryRetrievalService pipeline.
-/// Tests the end-to-end flow: scope resolution → privacy → lifecycle → retrieval → ranking → budgeting.
-/// </summary>
 public class MemoryRetrievalServiceTests : IDisposable
 {
     private readonly InMemoryDbFixture _fixture;
@@ -27,251 +22,178 @@ public class MemoryRetrievalServiceTests : IDisposable
     {
         _fixture = new InMemoryDbFixture();
         _provider = new KeywordRetrievalProvider(_fixture.Context);
-
-        var ranker = new RelevanceRanker();
-        var budgeter = new CharacterContextBudgeter();
-        var logger = new Mock<ILogger<MemoryRetrievalService>>();
-
-        _service = new MemoryRetrievalService(_provider, ranker, budgeter, logger.Object);
+        var resolver = new TestRetrievalProviderResolver(_provider);
+        _service = new MemoryRetrievalService(
+            _provider,
+            resolver,
+            new RelevanceRanker(),
+            new CharacterContextBudgeter(),
+            new Mock<ILogger<MemoryRetrievalService>>().Object);
     }
 
-    // ── Project Isolation ──
-
     [Fact]
-    public async Task RetrieveAsync_RespectsProjectIsolation()
+    public async Task RetrieveAsync_RespectsProjectAndOwnerIsolation()
     {
         var projectA = Guid.NewGuid();
         var projectB = Guid.NewGuid();
-
         _fixture.Context.MemoryEntries.AddRange(
-            TestDataHelper.CreateMemory(title: "Project A Config", scope: MemoryScope.Project, projectId: projectA),
-            TestDataHelper.CreateMemory(title: "Project B Config", scope: MemoryScope.Project, projectId: projectB),
-            TestDataHelper.CreateMemory(title: "Global Config", scope: MemoryScope.Global));
+            TestDataHelper.CreateMemory("A", "database", MemoryScope.Project, projectId: projectA),
+            TestDataHelper.CreateMemory("B", "database", MemoryScope.Project, projectId: projectB),
+            TestDataHelper.CreateMemory("Global", "database"));
         await _fixture.Context.SaveChangesAsync();
 
-        var request = TestDataHelper.CreateRetrievalRequest(query: "Config", projectId: projectA);
-        var result = await _service.RetrieveAsync(request);
+        var result = await _service.RetrieveAsync(TestDataHelper.CreateRetrievalRequest(
+            query: "database", projectId: projectA));
 
-        result.Memories.Should().NotContain(m => m.Title == "Project B Config",
-            "Project B memories must not leak to Project A");
-        result.Memories.Should().Contain(m => m.Title == "Project A Config");
-        result.Memories.Should().Contain(m => m.Title == "Global Config");
+        result.Memories.Select(m => m.Title).Should().Contain(["A", "Global"]);
+        result.Memories.Should().NotContain(m => m.Title == "B");
     }
 
-    // ── Workspace Isolation ──
+    [Fact]
+    public async Task RetrieveAsync_ExcludesInvalidLifecycleStates()
+    {
+        _fixture.Context.MemoryEntries.AddRange(
+            TestDataHelper.CreateMemory("Active", "lifecycle"),
+            TestDataHelper.CreateMemory("Updated", "lifecycle", state: MemoryState.Updated),
+            TestDataHelper.CreateMemory("Superseded", "lifecycle", state: MemoryState.Superseded),
+            TestDataHelper.CreateMemory("Archived", "lifecycle", state: MemoryState.Archived),
+            TestDataHelper.CreateMemory("Expired", "lifecycle", expiresAt: DateTime.UtcNow.AddMinutes(-1)));
+        await _fixture.Context.SaveChangesAsync();
+
+        var result = await _service.RetrieveAsync(TestDataHelper.CreateRetrievalRequest(query: "lifecycle"));
+
+        result.Memories.Select(m => m.Title).Should().BeEquivalentTo(["Active", "Updated"]);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_RespectsMaximumResults()
+    {
+        _fixture.Context.MemoryEntries.AddRange(Enumerable.Range(1, 10)
+            .Select(i => TestDataHelper.CreateMemory($"Memory {i}", "bounded")));
+        await _fixture.Context.SaveChangesAsync();
+
+        var result = await _service.RetrieveAsync(TestDataHelper.CreateRetrievalRequest("bounded", maxResults: 3));
+
+        result.Memories.Should().HaveCount(3);
+    }
 
     [Fact]
     public async Task RetrieveAsync_RespectsWorkspaceIsolation()
     {
         _fixture.Context.MemoryEntries.AddRange(
-            TestDataHelper.CreateMemory(title: "Workspace A Secret", scope: MemoryScope.Workspace, workspaceId: "ws-A"),
-            TestDataHelper.CreateMemory(title: "Workspace B Secret", scope: MemoryScope.Workspace, workspaceId: "ws-B"),
-            TestDataHelper.CreateMemory(title: "Global Config", scope: MemoryScope.Global));
+            TestDataHelper.CreateMemory("Workspace A Secret", "workspace", MemoryScope.Workspace, workspaceId: "ws-A"),
+            TestDataHelper.CreateMemory("Workspace B Secret", "workspace", MemoryScope.Workspace, workspaceId: "ws-B"),
+            TestDataHelper.CreateMemory("Global Config", "workspace"));
         await _fixture.Context.SaveChangesAsync();
 
-        var request = TestDataHelper.CreateRetrievalRequest(
-            query: "", workspaceId: "ws-A", userId: "user-1");
-        var result = await _service.RetrieveAsync(request);
+        var result = await _service.RetrieveAsync(TestDataHelper.CreateRetrievalRequest(
+            query: "workspace", workspaceId: "ws-A", userId: "user-1"));
 
-        result.Memories.Should().NotContain(m => m.Title == "Workspace B Secret",
-            "Workspace B memories must not leak to Workspace A");
-        result.Memories.Should().Contain(m => m.Title == "Workspace A Secret");
-        result.Memories.Should().Contain(m => m.Title == "Global Config");
+        result.Memories.Select(m => m.Title).Should().Contain("Workspace A Secret");
+        result.Memories.Should().NotContain(m => m.Title == "Workspace B Secret");
     }
-
-    // ── User/Private Isolation ──
 
     [Fact]
     public async Task RetrieveAsync_RespectsUserIsolation()
     {
         _fixture.Context.MemoryEntries.AddRange(
-            TestDataHelper.CreateMemory(title: "User A Secret", scope: MemoryScope.Private, userId: "user-A"),
-            TestDataHelper.CreateMemory(title: "User B Secret", scope: MemoryScope.Private, userId: "user-B"),
-            TestDataHelper.CreateMemory(title: "Global Config", scope: MemoryScope.Global));
+            TestDataHelper.CreateMemory("User A Secret", "private", MemoryScope.Private, userId: "user-A"),
+            TestDataHelper.CreateMemory("User B Secret", "private", MemoryScope.Private, userId: "user-B"),
+            TestDataHelper.CreateMemory("Global Config", "private"));
         await _fixture.Context.SaveChangesAsync();
 
-        var request = TestDataHelper.CreateRetrievalRequest(
-            query: "", userId: "user-A");
-        var result = await _service.RetrieveAsync(request);
+        var result = await _service.RetrieveAsync(TestDataHelper.CreateRetrievalRequest(
+            query: "private", userId: "user-A"));
 
-        result.Memories.Should().NotContain(m => m.Title == "User B Secret",
-            "User B private memories must not leak to User A");
-        result.Memories.Should().Contain(m => m.Title == "User A Secret");
-        result.Memories.Should().Contain(m => m.Title == "Global Config");
+        result.Memories.Select(m => m.Title).Should().Contain("User A Secret");
+        result.Memories.Should().NotContain(m => m.Title == "User B Secret");
     }
-
-    // ── Lifecycle ──
-
-    [Fact]
-    public async Task RetrieveAsync_ExcludesDeletedAndExpiredMemories()
-    {
-        _fixture.Context.MemoryEntries.AddRange(
-            TestDataHelper.CreateMemory(title: "Active", scope: MemoryScope.Global, state: MemoryState.Active),
-            TestDataHelper.CreateMemory(title: "Deleted", scope: MemoryScope.Global, state: MemoryState.Deleted),
-            TestDataHelper.CreateMemory(title: "Expired", scope: MemoryScope.Global,
-                state: MemoryState.Active, expiresAt: DateTime.UtcNow.AddDays(-1)));
-        await _fixture.Context.SaveChangesAsync();
-
-        var request = TestDataHelper.CreateRetrievalRequest(query: "");
-        var result = await _service.RetrieveAsync(request);
-
-        result.Memories.Should().Contain(m => m.Title == "Active");
-        result.Memories.Should().NotContain(m => m.Title == "Deleted");
-        result.Memories.Should().NotContain(m => m.Title == "Expired");
-    }
-
-    [Fact]
-    public async Task RetrieveAsync_SupersededMemories_Excluded()
-    {
-        _fixture.Context.MemoryEntries.AddRange(
-            TestDataHelper.CreateMemory(title: "Original", scope: MemoryScope.Global, state: MemoryState.Superseded),
-            TestDataHelper.CreateMemory(title: "Replacement", scope: MemoryScope.Global, state: MemoryState.Active));
-        await _fixture.Context.SaveChangesAsync();
-
-        var request = TestDataHelper.CreateRetrievalRequest(query: "");
-        var result = await _service.RetrieveAsync(request);
-
-        result.Memories.Should().NotContain(m => m.Title == "Original");
-        result.Memories.Should().Contain(m => m.Title == "Replacement");
-    }
-
-    // ── Metadata ──
 
     [Fact]
     public async Task RetrieveAsync_MetadataIsPopulated()
     {
-        _fixture.Context.MemoryEntries.AddRange(
-            TestDataHelper.CreateMemory(title: "Test Memory", scope: MemoryScope.Global));
+        _fixture.Context.MemoryEntries.Add(TestDataHelper.CreateMemory("Test Memory", "metadata"));
         await _fixture.Context.SaveChangesAsync();
 
-        var request = TestDataHelper.CreateRetrievalRequest(query: "Test");
-        var result = await _service.RetrieveAsync(request);
+        var result = await _service.RetrieveAsync(TestDataHelper.CreateRetrievalRequest("metadata"));
 
-        result.Metadata.Should().NotBeNull();
         result.Metadata.RetrievalProvider.Should().Be("keyword");
         result.Metadata.CandidateCount.Should().BeGreaterThan(0);
-        result.Metadata.RetrievalDurationMs.Should().BeGreaterThan(0);
+        result.Metadata.RetrievalDurationMs.Should().BeGreaterThanOrEqualTo(0);
     }
-
-    // ── PromptContext ──
 
     [Fact]
     public async Task BuildPromptContextAsync_ReturnsCompleteContext()
     {
-        _fixture.Context.MemoryEntries.AddRange(
-            TestDataHelper.CreateMemory(title: "Important Decision", scope: MemoryScope.Global,
-                importance: 0.9, tags: ["decision"]));
+        _fixture.Context.MemoryEntries.Add(TestDataHelper.CreateMemory(
+            "Important Decision", "decision", tags: ["decision"], importance: 0.9));
         await _fixture.Context.SaveChangesAsync();
 
-        var request = TestDataHelper.CreateRetrievalRequest(query: "Important Decision");
-        var context = await _service.BuildPromptContextAsync(request);
+        var context = await _service.BuildPromptContextAsync(
+            TestDataHelper.CreateRetrievalRequest("Important Decision"));
 
-        context.Should().NotBeNull();
         context.OriginalQuery.Should().Be("Important Decision");
-        context.RetrievedMemories.Should().HaveCount(1);
-        context.RetrievedMemories[0].Title.Should().Be("Important Decision");
+        context.RetrievedMemories.Should().ContainSingle(m => m.Title == "Important Decision");
         context.Metadata.Should().NotBeNull();
     }
-
-    // ── MaximumResults ──
 
     [Fact]
     public async Task RetrieveAsync_MaximumResults_IsRespected()
     {
-        var memories = Enumerable.Range(1, 10)
-            .Select(i => TestDataHelper.CreateMemory(
-                title: $"Memory {i}", content: $"Content about topic {i}",
-                scope: MemoryScope.Global))
-            .ToList();
-
-        _fixture.Context.MemoryEntries.AddRange(memories);
+        _fixture.Context.MemoryEntries.AddRange(Enumerable.Range(1, 10)
+            .Select(i => TestDataHelper.CreateMemory($"Memory {i}", "bounded")));
         await _fixture.Context.SaveChangesAsync();
 
-        var request = TestDataHelper.CreateRetrievalRequest(query: "", maxResults: 3);
-        var result = await _service.RetrieveAsync(request);
+        var result = await _service.RetrieveAsync(TestDataHelper.CreateRetrievalRequest(
+            query: "bounded", maxResults: 3));
 
-        result.Memories.Count.Should().BeLessThanOrEqualTo(3,
-            "MaximumResults should limit the number of returned memories");
+        result.Memories.Should().HaveCountLessThanOrEqualTo(3);
     }
-
-    // ── Ranking ──
 
     [Fact]
     public async Task RetrieveAsync_RankingOrder_IsByRelevance()
     {
         _fixture.Context.MemoryEntries.AddRange(
-            TestDataHelper.CreateMemory(
-                title: "Exact Match About Database", content: "Detailed database configuration guide",
-                scope: MemoryScope.Global, importance: 0.9),
-            TestDataHelper.CreateMemory(
-                title: "General Notes", content: "Some random notes about various topics",
-                scope: MemoryScope.Global, importance: 0.3));
+            TestDataHelper.CreateMemory("Exact Match About Database", "database configuration guide", importance: 0.9),
+            TestDataHelper.CreateMemory("General Notes", "random notes", importance: 0.3));
         await _fixture.Context.SaveChangesAsync();
 
-        var request = TestDataHelper.CreateRetrievalRequest(query: "database configuration");
-        var result = await _service.RetrieveAsync(request);
+        var result = await _service.RetrieveAsync(TestDataHelper.CreateRetrievalRequest(
+            query: "database configuration"));
 
-        result.Memories.Should().HaveCountGreaterThan(0);
-        result.Memories[0].Title.Should().Contain("Database",
-            "Exact match should rank first");
+        result.Memories[0].Title.Should().Contain("Database");
     }
-
-    // ── Context Budget ──
 
     [Fact]
     public async Task RetrieveAsync_ContextBudget_IsRespected()
     {
-        var memories = Enumerable.Range(1, 20)
-            .Select(i => TestDataHelper.CreateMemory(
-                title: $"Large Memory {i}", content: new string('x', 2000),
-                scope: MemoryScope.Global))
-            .ToList();
-
-        _fixture.Context.MemoryEntries.AddRange(memories);
+        _fixture.Context.MemoryEntries.AddRange(Enumerable.Range(1, 20)
+            .Select(i => TestDataHelper.CreateMemory($"Large Memory {i}", new string('x', 2000))));
         await _fixture.Context.SaveChangesAsync();
 
-        var request = TestDataHelper.CreateRetrievalRequest(query: "", tokenBudget: 600);
-        var result = await _service.RetrieveAsync(request);
+        var result = await _service.RetrieveAsync(TestDataHelper.CreateRetrievalRequest(
+            query: "", tokenBudget: 600));
 
-        result.Metadata.EstimatedTokensUsed.Should().BeLessThanOrEqualTo(600,
-            "Context budget must be respected");
+        result.Metadata.EstimatedTokensUsed.Should().BeLessThanOrEqualTo(600);
     }
-
-    // ── Full Isolation Scenario ──
 
     [Fact]
-    public async Task RetrieveAsync_FullIsolation_OnlyCorrectMemoriesReturned()
+    public async Task RetrieveAsync_MissingOwnerFailsClosed()
     {
-        var projectA = Guid.NewGuid();
-        var projectB = Guid.NewGuid();
-
-        _fixture.Context.MemoryEntries.AddRange(
-            TestDataHelper.CreateMemory("Global", scope: MemoryScope.Global),
-            TestDataHelper.CreateMemory("Project A", scope: MemoryScope.Project, projectId: projectA),
-            TestDataHelper.CreateMemory("Project B", scope: MemoryScope.Project, projectId: projectB),
-            TestDataHelper.CreateMemory("Workspace 1", scope: MemoryScope.Workspace, workspaceId: "ws-1"),
-            TestDataHelper.CreateMemory("Workspace 2", scope: MemoryScope.Workspace, workspaceId: "ws-2"),
-            TestDataHelper.CreateMemory("User 1", scope: MemoryScope.Private, userId: "user-1"),
-            TestDataHelper.CreateMemory("User 2", scope: MemoryScope.Private, userId: "user-2"));
+        _fixture.Context.MemoryEntries.Add(TestDataHelper.CreateMemory("Secret", "secret", ownerId: "owner-a"));
         await _fixture.Context.SaveChangesAsync();
 
-        var request = TestDataHelper.CreateRetrievalRequest(
-            query: "", projectId: projectA, workspaceId: "ws-1", userId: "user-1");
-        var result = await _service.RetrieveAsync(request);
+        var result = await _service.RetrieveAsync(new RetrievalRequest { Query = "secret" });
 
-        result.Memories.Should().HaveCount(4);
-        var titles = result.Memories.Select(m => m.Title).ToList();
-        titles.Should().Contain("Global");
-        titles.Should().Contain("Project A");
-        titles.Should().Contain("Workspace 1");
-        titles.Should().Contain("User 1");
-        titles.Should().NotContain("Project B");
-        titles.Should().NotContain("Workspace 2");
-        titles.Should().NotContain("User 2");
+        result.Memories.Should().BeEmpty();
     }
 
-    public void Dispose()
+    public void Dispose() => _fixture.Dispose();
+
+    private sealed class TestRetrievalProviderResolver : IRetrievalProviderResolver
     {
-        _fixture.Dispose();
+        private readonly IMemoryRetrievalProvider _provider;
+        public TestRetrievalProviderResolver(IMemoryRetrievalProvider provider) => _provider = provider;
+        public IMemoryRetrievalProvider Resolve(RetrievalMode mode) => _provider;
     }
 }

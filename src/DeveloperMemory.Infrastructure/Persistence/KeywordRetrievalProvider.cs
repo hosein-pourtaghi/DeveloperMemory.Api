@@ -30,9 +30,11 @@ public class KeywordRetrievalProvider : IMemoryRetrievalProvider
         // Determine eligible scopes
         var eligibleScopes = GetEligibleScopes(request);
 
+        var now = DateTime.UtcNow;
         var query = _context.MemoryEntries
             .AsNoTracking()
-            .Where(e => e.State != MemoryState.Deleted);
+            .Where(e => (e.State == MemoryState.Active || e.State == MemoryState.Updated) &&
+                        (!e.ExpiresAt.HasValue || e.ExpiresAt.Value > now));
 
         // ── Owner isolation (DB level) — mandatory, fail closed ──
         // If OwnerId is missing/empty, return no results (fail closed, not fail open)
@@ -102,10 +104,14 @@ public class KeywordRetrievalProvider : IMemoryRetrievalProvider
                 (e.TagsJson != null && e.TagsJson.ToLower().Contains(queryLower)));
         }
 
-        // Order by importance and recency for initial candidate set
+        // Keep a bounded candidate window for application-level ranking and category filtering.
+        // The service still applies the authoritative MaximumResults limit after ranking.
+        var candidateWindow = Math.Clamp(request.MaximumResults * 3, request.MaximumResults, 300);
         var candidates = await query
             .OrderByDescending(e => e.Importance)
             .ThenByDescending(e => e.UpdatedAt)
+            .ThenBy(e => e.Id)
+            .Take(candidateWindow)
             .ToListAsync(ct);
 
         // ── Category filtering (in-memory for JSON tag matching) ──
@@ -124,6 +130,14 @@ public class KeywordRetrievalProvider : IMemoryRetrievalProvider
         }
 
         return candidates;
+    }
+
+    public async Task<List<RetrievalCandidate>> GetScoredCandidatesAsync(
+        RetrievalRequest request,
+        CancellationToken ct = default)
+    {
+        var memories = await GetCandidatesAsync(request, ct);
+        return memories.Select(memory => new RetrievalCandidate { Memory = memory }).ToList();
     }
 
     private static List<MemoryScope> GetEligibleScopes(RetrievalRequest request)

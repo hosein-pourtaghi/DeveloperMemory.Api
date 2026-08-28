@@ -26,4 +26,16 @@ public interface IMemoryRetrievalProvider
     Task<List<MemoryEntry>> GetCandidatesAsync(
         RetrievalRequest request,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves candidates with optional semantic relevance metadata.
+    /// The default implementation preserves compatibility with existing providers.
+    /// </summary>
+    async Task<List<RetrievalCandidate>> GetScoredCandidatesAsync(
+        RetrievalRequest request,
+        CancellationToken ct = default)
+    {
+        var memories = await GetCandidatesAsync(request, ct);
+        return memories.Select(memory => new RetrievalCandidate { Memory = memory }).ToList();
+    }
 }

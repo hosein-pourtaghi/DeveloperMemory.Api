@@ -83,7 +83,7 @@ Response back to AI Application
 - ✅ PostgreSQL with pgvector extension (for future vector search)
 
 ### Not Yet Implemented
-- Authentication and authorization
+- Authentication and authorization (enabled for Production; Development uses an auth-free local identity)
 - Semantic/vector search (embeddings — pgvector available but not integrated)
 - Automatic memory capture from conversations
 - CI/CD pipeline
@@ -127,12 +127,14 @@ See [CLAUDE.md](CLAUDE.md) for complete technical reference and [PROJECT_VISION.
 ### With Docker (recommended)
 
 ```bash
-# In-memory mode (no PostgreSQL required)
+# Local Development behavior: auth-free identity, in-memory database
 docker compose up api
 
-# With PostgreSQL
+# Local Development behavior with PostgreSQL
 docker compose up api-postgres
 ```
+
+Docker does not automatically disable authentication. The Compose services explicitly set `ASPNETCORE_ENVIRONMENT=Development` for local use. The Dockerfile defaults to `Production`, so a deployed container retains authentication and authorization; behavior is determined by `ASPNETCORE_ENVIRONMENT`.
 
 ### Without Docker
 
@@ -144,6 +146,8 @@ dotnet run --project src/DeveloperMemory.Api
 - **API**: `http://localhost:5041`
 - **Swagger UI**: `/swagger` (Development mode)
 - **Health Check**: `GET /health`
+
+Development runs without login, JWTs, API keys, or `Authorization` headers. The Development environment supplies a local identity for existing protected endpoints; Production and other non-development environments retain API-key authentication and authorization.
 
 ### Requirements
 

@@ -204,7 +204,7 @@ All test projects use:
 | **Gateway services in API project** | ModeDetector, FreeLlmApiClient live in Api project. Conceptually belong in Application or Infrastructure layers. | Medium |
 | **IPromptIntelligenceEngine (basic)** | Interface and basic orchestration implemented (Phase 7). Full intent analysis, context budget, conflict detection still target architecture. | Medium (target) |
 | **No IMemoryIntelligenceService** | No automatic memory evaluation, duplicate detection, or contradiction analysis. | Medium (target) |
-| **No authentication/authorization** | API is unprotected. CORS is wide open. | Medium |
+| **Environment-bound authentication** | Development uses a local identity without developer credentials; Production/non-Development retain API-key authentication and authorization. | Resolved |
 | **Redis not integrated** | Redis service defined in docker-compose but not used by application code. | Low |
 | **No CI/CD** | No GitHub Actions or build automation pipeline. | Low |
 
@@ -410,6 +410,6 @@ Static analysis of test code:
 | Tests may not compile due to .NET 10.0 SDK version | Medium | Verify in .NET-capable environment |
 | FreeLlmApiClient coupling limits provider swap | Medium | Phase 4 introduces IModelGateway |
 | Keyword search quality insufficient for production | Medium | Phase 5 introduces retrieval abstraction |
-| No authentication limits production deployment | High | Phase 6 adds auth middleware |
+| Production authentication boundary | Resolved | API-key authentication is enabled outside Development; Docker defaults to Production and follows `ASPNETCORE_ENVIRONMENT` |
 | Knowledge document ID instability | Low | Known limitation, documented |
 | CORS wide open | High for production | Phase 6 locks down CORS |

@@ -1,6 +1,6 @@
 # Current Status
 
-**Last verified:** August 27, 2026 (Phase G — End-to-End Runtime Verification)
+**Last verified:** August 29, 2026
 **Version:** .NET 10.0
 **Branch:** main
 
@@ -39,7 +39,7 @@ TOTAL:                                  598
 | ------------------------- | ------ | ------- | ----- |
 | Startup                   | ✅ PASS | InMemory | Application starts successfully |
 | Health                    | ✅ PASS | InMemory | 200 OK, no auth required |
-| No authentication         | ✅ PASS | InMemory | 401 Unauthorized |
+| Development auth-free mode | ✅ PASS | InMemory | No credentials; protected endpoints receive local identity |
 | Invalid API key           | ✅ PASS | InMemory | 401 Unauthorized |
 | Valid config key auth     | ✅ PASS | InMemory | 200 OK |
 | DB key creation           | ✅ PASS | InMemory | Raw key returned once only |
@@ -55,7 +55,7 @@ TOTAL:                                  598
 | Cross-user isolation (B)  | ✅ PASS | InMemory | B cannot see A's memory |
 | Rate limiting             | ✅ PASS | InMemory | Normal requests pass within limits |
 | Audit events              | ✅ PASS | InMemory | Events recorded, no raw secrets |
-| Gateway: no auth → 401   | ✅ PASS | InMemory | 401 Unauthorized |
+| Production auth boundary | ✅ PASS | Configuration | Non-Development selects API-key authentication |
 | Gateway: reaches pipeline | ✅ PASS | InMemory | Request reaches enrichment (no LLM provider) |
 | Invalid GUID → 404/400    | ✅ PASS | InMemory | 404 Not Found |
 
@@ -77,7 +77,7 @@ Failed:              0
 - Memory Intelligence: extraction, conflict detection, ingestion
 - Prompt Intelligence: analysis, context assembly, optimization, evaluation
 - Retrieval: keyword, semantic, hybrid with owner isolation
-- API Key authentication with persistent lifecycle management (PostgreSQL)
+- Environment-bound authentication: auth-free Development identity; API-key authentication in Production/non-Development
 - Ownership enforcement at repository, retrieval, and filter levels
 - Fail-closed OwnerId (missing OwnerId = no results)
 - Rate limiting: per-identity partitioned, endpoint-category-specific
@@ -89,7 +89,10 @@ Failed:              0
 
 ## Authentication & Security
 
-- **Model:** API Key via Bearer token
+- **Development:** Authentication credentials are not required. The existing `DevelopmentAuthenticationHandler` supplies a deterministic local identity so `[Authorize]` endpoints work immediately without login, JWTs, API keys, or auth headers.
+- **Production/non-Development:** Authentication and authorization remain enabled and use the existing API-key Bearer-token flow.
+- **Docker:** Docker is not an authentication mode. Behavior follows `ASPNETCORE_ENVIRONMENT`; the Dockerfile defaults to Production for deployed containers, while Compose explicitly uses Development for local convenience.
+- **Model:** API Key via Bearer token outside Development
 - **Key storage:** PostgreSQL (primary) + configuration (development bootstrap)
 - **Secret handling:** Salted SHA-256 hashes — raw keys never persisted
 - **Identity abstraction:** ICurrentUser (Application layer)
@@ -102,10 +105,11 @@ Failed:              0
 
 ---
 
-## Development API Keys
+## Development Authentication
 
-Configuration-based keys in `appsettings.json` are **development bootstrap credentials only**.
-Production keys are created via `POST /api/ApiKey/create` and stored in PostgreSQL.
+Normal local development is auth-free. Running `dotnet run --project src/DeveloperMemory.Api` uses the `Development` environment from `launchSettings.json`; protected endpoints receive the deterministic local identity automatically. No API key or authentication configuration is required.
+
+The existing configuration-based API keys remain available for explicitly testing the real API-key handler. Production keys are created via `POST /api/ApiKey/create` and stored in PostgreSQL.
 
 ```json
 {

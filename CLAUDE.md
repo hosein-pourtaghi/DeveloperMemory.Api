@@ -377,6 +377,16 @@ Use `__` separator:
 
 ---
 
+## Authentication and Environment Behavior
+
+Authentication is intentionally environment-bound:
+
+- `Development`: no developer credentials are required. `DevelopmentAuthenticationHandler` supplies a deterministic local `ClaimsPrincipal` so existing `[Authorize]` endpoints execute normally without login, JWTs, API keys, or auth headers.
+- `Production` and all non-development environments: existing API-key authentication and authorization remain enabled.
+- Docker is not an authentication mode. The `Dockerfile` defaults to `ASPNETCORE_ENVIRONMENT=Production`; Docker Compose explicitly uses `Development` for local development. A container follows `ASPNETCORE_ENVIRONMENT`, so production server/container deployments remain protected.
+
+The development identity uses `ClaimTypes.NameIdentifier` as the owner ID, preserving server-derived memory ownership and isolation.
+
 ## Docker
 
 ### Dockerfile

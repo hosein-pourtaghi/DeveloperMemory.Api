@@ -1,14 +1,75 @@
 # Security Architecture
 
-**Last verified:** August 27, 2026 (Phase G — End-to-End Runtime Verification)
+**Last verified:** August 29, 2026
 
 ---
 
-## Authentication Model
+## Environment-Bound Authentication Model
+
+The API has two deliberately separate runtime modes:
+
+| Environment | Authentication | Authorization | Developer credentials |
+|---|---|---|---|
+| `Development` | Auth-free developer mode | Existing `[Authorize]` checks are satisfied by a deterministic local identity | None required |
+| `Production` and all non-development environments | API key via Bearer token | Enabled | Required |
+
+Normal local development does not require login, JWTs, API keys, or an `Authorization` header. The existing `DevelopmentAuthenticationHandler` supplies a deterministic authenticated identity, so protected controllers and their existing authorization attributes remain in place without creating a separate developer workflow.
+
+This is environment-driven rather than Docker-driven:
+
+- The `Dockerfile` defaults to `ASPNETCORE_ENVIRONMENT=Production`, so a deployed container retains authentication and authorization.
+- Docker Compose services explicitly set `ASPNETCORE_ENVIRONMENT=Development` for local development convenience.
+- A container behaves according to its `ASPNETCORE_ENVIRONMENT`; Docker itself is not an authentication mode.
+
+### Development flow
+
+```text
+ASPNETCORE_ENVIRONMENT=Development
+    ↓
+DevelopmentOrApiKey policy scheme
+    ↓ (no Bearer header)
+DevelopmentAuthenticationHandler
+    ↓
+Deterministic ClaimsPrincipal
+    ↓
+Existing [Authorize] endpoints execute normally
+```
+
+The handler has a second internal environment check and returns no authentication result unless both the host environment is `Development` and the development setting is enabled. The Development configuration enables the setting; the base configuration defaults it to `false`.
+
+If a Bearer token is supplied in Development, the policy scheme forwards to the normal `ApiKey` handler instead. This preserves the real API-key path for development testing.
+
+### Development identity
+
+The development principal uses the same identity claims consumed by `HttpContextCurrentUser` and the Application layer:
+
+- `ClaimTypes.NameIdentifier`: `local-development-owner`
+- `ClaimTypes.Name`: `Local Development Owner`
+- `development_bypass`: `true`
+
+The owner ID remains server-derived and is used by the normal memory ownership filters. Development convenience does not make memories shared across owners.
+
+### Production flow
+
+```text
+ASPNETCORE_ENVIRONMENT=Production (or any non-Development value)
+    ↓
+Development scheme cannot be selected
+    ↓
+ApiKeyAuthenticationHandler
+    ↓
+Valid Bearer API key required for [Authorize] endpoints
+```
+
+Production and staging do not select `DevelopmentAuthenticationHandler`. The production path continues to use the existing API-key implementation, including database lookup, configuration fallback, expiration, revocation, rotation, audit events, and authorization behavior.
+
+---
+
+## API-Key Authentication (Production and Explicit API-Key Requests)
 
 **Mechanism:** API Key via Bearer token
 
-All protected endpoints require a valid API key sent as:
+Protected endpoints in Production require:
 ```
 Authorization: Bearer <api-key>
 ```
@@ -17,8 +78,8 @@ Authorization: Bearer <api-key>
 
 | Storage | Purpose | Production? |
 |---------|---------|-------------|
-| PostgreSQL `ApiKeys` table | Primary key store | ✅ |
-| `appsettings.json` `Authentication:ApiKeys` | Development bootstrap | ❌ Dev only |
+| PostgreSQL `ApiKeys` table | Primary key store | Yes |
+| `appsettings.json` `Authentication:ApiKeys` | Bootstrap/fallback configuration | Development-oriented |
 
 **Secret handling:** Raw API keys are hashed with salted SHA-256 before storage.
 The raw key is only shown once at creation time. Never persisted in plaintext.
@@ -81,7 +142,7 @@ The following security properties were **runtime verified** via HTTP requests ag
 
 | Property | Verified | Method |
 |----------|----------|--------|
-| No credentials → 401 | ✅ | HTTP GET without auth header |
+| No credentials → 401 | ✅ | HTTP GET without auth header in Production/non-Development |
 | Invalid key → 401 | ✅ | HTTP GET with bad key |
 | Valid config key → 200 | ✅ | HTTP GET with dev key |
 | DB key creation | ✅ | HTTP POST /api/ApiKey/create |
@@ -93,7 +154,7 @@ The following security properties were **runtime verified** via HTTP requests ag
 | Cross-owner direct ID → 404 | ✅ | HTTP GET with other user's memory ID |
 | Rate limiting | ✅ | Normal requests pass within limits |
 | Audit events: no raw keys | ✅ | HTTP GET /api/ApiKey/audit — no raw secrets in records |
-| Gateway auth → 401 | ✅ | HTTP POST /v1/chat/completions without auth |
+| Gateway auth → 401 | ✅ | HTTP POST /v1/chat/completions without auth in Production/non-Development |
 
 ---
 
@@ -102,7 +163,7 @@ The following security properties were **runtime verified** via HTTP requests ag
 ### Identity Flow
 
 ```
-API Key → ClaimsPrincipal → ICurrentUser → OwnerId
+Development identity or API key → ClaimsPrincipal → ICurrentUser → OwnerId
 ```
 
 Ownership is derived server-side from the authenticated principal. Client-supplied `userId` or `ownerId` fields are ignored for ownership.
@@ -201,16 +262,27 @@ Background cleanup may be added in a future phase.
 
 ## HTTP Security Behavior
 
-| Scenario | Response |
-|----------|----------|
-| No credentials | 401 Unauthorized |
-| Invalid key | 401 Unauthorized |
-| Expired key | 401 Unauthorized |
-| Revoked key | 401 Unauthorized |
-| Cross-user access | 404 Not Found (not 403) |
-| Rate limited | 429 Too Many Requests |
+| Scenario | Development | Production / non-development |
+|---|---|---|
+| No credentials on protected endpoint | Authenticated local identity; request proceeds | 401 Unauthorized |
+| Invalid API key | Forwarded to API-key handler and rejected | 401 Unauthorized |
+| Expired key | Rejected | 401 Unauthorized |
+| Revoked key | Rejected | 401 Unauthorized |
+| Cross-user access | 404 Not Found | 404 Not Found |
+| Rate limited | 429 Too Many Requests | 429 Too Many Requests |
 
 Cross-user access returns 404 to prevent information leakage about resource existence.
+
+## Security Boundary Confirmation
+
+```text
+Development auth-free mode: enabled only in Development
+Production authentication: enabled
+Production authorization: enabled
+Docker bypass: none; behavior follows ASPNETCORE_ENVIRONMENT
+Existing API contracts: preserved
+Memory ownership isolation: preserved
+```
 
 ---
 

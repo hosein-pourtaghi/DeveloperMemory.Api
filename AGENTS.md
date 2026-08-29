@@ -183,7 +183,7 @@ DeveloperMemory.Api.sln (at repository root)
 
 7. **Docker is available:** Dockerfile + docker-compose.yml at repository root. Use `docker compose up api` for in-memory mode, `docker compose up api-postgres` for PostgreSQL mode.
 
-8. **No authentication:** The API is unprotected. CORS is the only access control.
+8. **Environment-bound authentication:** Development uses an auth-free local identity; Production and all non-development environments retain API-key authentication and authorization. Docker follows `ASPNETCORE_ENVIRONMENT` and does not inherently bypass security.
 
 9. **Provider abstraction:** The controller depends on `IModelGateway` (in `Api/Abstractions/`), not the concrete `FreeLlmApiClient`. `FreeLlmApiClient` is the current OpenAI-compatible adapter. To add a new provider, implement `IModelGateway` and swap the DI registration.
 

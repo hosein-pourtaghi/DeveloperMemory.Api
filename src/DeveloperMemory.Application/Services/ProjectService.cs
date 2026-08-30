@@ -72,6 +72,24 @@ public class ProjectService : IProjectService
         return await _projectRepository.DeleteAsync(id, ct);
     }
 
+    public async Task<ProjectDto?> GetByNameAsync(string name, CancellationToken ct = default)
+    {
+        var project = await _projectRepository.GetByNameAsync(name, ct);
+        if (project == null) return null;
+        return await MapToDtoAsync(project, ct);
+    }
+
+    public async Task<List<ProjectDto>> SearchByNameAsync(string searchTerm, CancellationToken ct = default)
+    {
+        var projects = await _projectRepository.SearchByNameAsync(searchTerm, ct);
+        var dtos = new List<ProjectDto>();
+        foreach (var project in projects)
+        {
+            dtos.Add(await MapToDtoAsync(project, ct));
+        }
+        return dtos;
+    }
+
     private async Task<ProjectDto> MapToDtoAsync(Project project, CancellationToken ct = default)
     {
         var memoryCount = await _memoryRepository.CountAsync(

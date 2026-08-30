@@ -32,6 +32,7 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
     private readonly IPromptComposer _composer;
     private readonly IPromptOptimizer _optimizer;
     private readonly IMemoryRetrievalService _retrievalService;
+    private readonly IConversationalMemoryService? _conversationalMemoryService;
     private readonly ILogger<PromptIntelligenceEngine> _logger;
 
     public PromptIntelligenceEngine(
@@ -41,7 +42,8 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
         IPromptComposer composer,
         IPromptOptimizer optimizer,
         IMemoryRetrievalService retrievalService,
-        ILogger<PromptIntelligenceEngine> logger)
+        ILogger<PromptIntelligenceEngine> logger,
+        IConversationalMemoryService? conversationalMemoryService = null)
     {
         _analyzer = analyzer;
         _constraintResolver = constraintResolver;
@@ -49,6 +51,7 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
         _composer = composer;
         _optimizer = optimizer;
         _retrievalService = retrievalService;
+        _conversationalMemoryService = conversationalMemoryService;
         _logger = logger;
     }
 
@@ -61,6 +64,8 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
         int contextTokenBudget = 4000,
         string? profileContext = null,
         string? knowledgeContext = null,
+        List<string>? tags = null,
+        List<string>? conversationHistory = null,
         CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -105,6 +110,43 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
             failedStage = PromptIntelligenceStage.Analysis;
             warnings.Add("Analysis failed; using conservative fallback analysis");
             degradationReasons.Add("analysis_failed");
+        }
+
+        // ── Stage 1.5: Conversational Memory Ingestion (non-fatal) ──
+        // Attempt to detect and persist durable information from the user message.
+        // This runs BEFORE retrieval so newly persisted memories are available
+        // for retrieval in the same request. Failures are completely isolated.
+        if (_conversationalMemoryService != null)
+        {
+            var ingestionStopwatch = Stopwatch.StartNew();
+            try
+            {
+                var ingestionResult = await _conversationalMemoryService.TryIngestAsync(
+                    userRequest, userId, projectId, workspaceId, tags, conversationHistory, ct);
+                ingestionStopwatch.Stop();
+                metadata.IngestionDurationMs = ingestionStopwatch.Elapsed.TotalMilliseconds;
+                metadata.IngestionDetected = ingestionResult.Detected;
+                metadata.IngestionCreatedCount = ingestionResult.CreatedCount;
+                metadata.IngestionDuplicateCount = ingestionResult.DuplicateCount;
+                metadata.IngestionSupersededCount = ingestionResult.SupersededCount;
+
+                if (ingestionResult.Failed)
+                {
+                    _logger.LogWarning(
+                        "Conversational memory ingestion failed (non-fatal): {Reason}",
+                        ingestionResult.FailureReason);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                ingestionStopwatch.Stop();
+                metadata.IngestionDurationMs = ingestionStopwatch.Elapsed.TotalMilliseconds;
+                _logger.LogWarning(ex, "Conversational memory ingestion failed (non-fatal)");
+            }
         }
 
         // ── Stage 2: Memory Retrieval (via centralized pipeline) ──

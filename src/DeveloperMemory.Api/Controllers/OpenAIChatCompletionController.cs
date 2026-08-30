@@ -125,7 +125,15 @@ public class OpenAIChatCompletionController : ControllerBase
                 "Mode detected: {Mode} | Selected model: {Model} | AutoSelect: {AutoSelect}",
                 mode, selectedModel, _modelSelection.AutoSelectModel);
 
-            // ── Step 3: Load knowledge and profiles (formatted as text) ──
+            // ── Step 3: Extract conversation history for intelligence ──
+            // Open WebUI sends the full conversation in messages[].
+            // Extract all user messages as conversation context for project resolution
+            // and memory detection.
+            var conversationHistory = request.Messages
+                .Where(m => m.Role == "user" && !string.IsNullOrWhiteSpace(m.Content))
+                .Select(m => m.Content!)
+                .ToList();
+
             var lastUserMessage = request.Messages.LastOrDefault(m => m.Role == "user");
             var searchQuery = lastUserMessage?.Content;
 
@@ -155,6 +163,8 @@ public class OpenAIChatCompletionController : ControllerBase
                 contextTokenBudget: 4000,
                 profileContext: profileContext,
                 knowledgeContext: knowledgeContext,
+                tags: request.Tags,
+                conversationHistory: conversationHistory,
                 ct: cancellationToken);
 
             _logger.LogInformation(

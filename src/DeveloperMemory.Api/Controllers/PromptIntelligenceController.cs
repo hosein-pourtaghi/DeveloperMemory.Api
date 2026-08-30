@@ -210,6 +210,8 @@ public class PromptIntelligenceController : ControllerBase
             request.TokenBudget,
             null, // profileContext
             null, // knowledgeContext
+            null, // tags
+            null, // conversationHistory
             ct);
 
         return Ok(new

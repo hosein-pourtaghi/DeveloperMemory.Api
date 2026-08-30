@@ -33,6 +33,8 @@ public class StubPromptIntelligenceEngine : IPromptIntelligenceEngine
         int contextTokenBudget = 4000,
         string? profileContext = null,
         string? knowledgeContext = null,
+        List<string>? tags = null,
+        List<string>? conversationHistory = null,
         CancellationToken ct = default)
     {
         LastUserRequest = userRequest;

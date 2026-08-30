@@ -160,6 +160,7 @@ builder.Services.AddSwaggerGen(c =>
 // Configure strongly-typed settings
 builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AppSettings"));
 builder.Services.Configure<ModelSelectionSettings>(builder.Configuration.GetSection("AppSettings:ModelSelection"));
+builder.Services.Configure<DiagnosticsSettings>(builder.Configuration.GetSection(DiagnosticsSettings.SectionName));
 
 // Register existing services (file-based knowledge and profiles)
 builder.Services.AddSingleton<ProfileService>();
@@ -328,6 +329,9 @@ using (var scope = app.Services.CreateScope())
         Log.Information("Using in-memory database.");
     }
 }
+
+// Diagnostic persistence middleware (captures HTTP diagnostics to PostgreSQL when enabled)
+app.UseMiddleware<DiagnosticLoggingMiddleware>();
 
 // Diagnostic: log incoming request bodies for /v1/*
 app.UseMiddleware<RequestLoggingMiddleware>();

@@ -10,7 +10,7 @@ namespace DeveloperMemory.Application.Contracts;
 /// 
 /// The engine does NOT execute requests. It prepares intelligence/context.
 /// 
-/// Pipeline: Request → Analysis → Constraints → Memory Retrieval → Refinement
+/// Pipeline: Request → Analysis → Memory Ingestion → Constraints → Memory Retrieval
 ///          → Deduplication → Organization → Composition → Optimization → PromptPackage
 /// </summary>
 public interface IPromptIntelligenceEngine
@@ -23,6 +23,9 @@ public interface IPromptIntelligenceEngine
     /// to provide pre-formatted additional context (developer profiles, knowledge
     /// documents) that the engine includes in the composed prompt alongside its
     /// own intelligence-derived context.
+    ///
+    /// The optional tags parameter provides client-supplied tags for memory scope
+    /// inference. When absent, the engine uses available conversational context.
     /// </summary>
     Task<PromptPackage> ProcessAsync(
         string userRequest,
@@ -32,6 +35,8 @@ public interface IPromptIntelligenceEngine
         int contextTokenBudget = 4000,
         string? profileContext = null,
         string? knowledgeContext = null,
+        List<string>? tags = null,
+        List<string>? conversationHistory = null,
         CancellationToken ct = default);
 
     /// <summary>

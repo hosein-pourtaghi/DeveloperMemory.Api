@@ -110,6 +110,16 @@ public class InMemoryProjectRepository : IProjectRepository
     {
         return Task.FromResult(_projects.RemoveAll(p => p.Id == id) > 0);
     }
+
+    public Task<Project?> GetByNameAsync(string name, CancellationToken ct = default)
+    {
+        return Task.FromResult(_projects.FirstOrDefault(p => p.Name == name));
+    }
+
+    public Task<List<Project>> SearchByNameAsync(string searchTerm, CancellationToken ct = default)
+    {
+        return Task.FromResult(_projects.Where(p => p.Name.Contains(searchTerm)).OrderBy(p => p.Name).ToList());
+    }
 }
 
 public class MemoryServiceTests

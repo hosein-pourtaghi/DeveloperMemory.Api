@@ -45,6 +45,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMemoryRepository, MemoryRepository>();
         services.AddScoped<IProjectRepository, ProjectRepository>();
         services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
+        services.AddScoped<IDiagnosticLogRepository, DiagnosticLogRepository>();
 
         // Application services
         services.AddScoped<IMemoryService, MemoryService>();
@@ -70,6 +71,30 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMemoryConflictDetector, MemoryConflictDetector>();
         services.AddScoped<IMemoryRanker, MemoryRanker>();
         services.AddScoped<IMemoryExtractionStrategy, DeterministicExtractionStrategy>();
+
+        // LLM Intelligence options (shared by Phase L, 8, 10)
+        var memoryIntelligenceOptions = new MemoryIntelligenceOptions();
+        configuration.GetSection(MemoryIntelligenceOptions.SectionName).Bind(memoryIntelligenceOptions);
+        services.Configure<MemoryIntelligenceOptions>(configuration.GetSection(MemoryIntelligenceOptions.SectionName));
+
+        // Phase L: Conversational Memory Intelligence
+        services.AddScoped<ConversationalMemoryDetector>(); // Deterministic detector (used by hybrid)
+        if (memoryIntelligenceOptions.IsAvailable)
+        {
+            services.AddScoped<ISemanticContextAnalyzer, SemanticContextAnalyzer>();
+            services.AddScoped<IConversationalMemoryDetector>(sp =>
+            {
+                var deterministic = sp.GetRequiredService<ConversationalMemoryDetector>();
+                var semanticAnalyzer = sp.GetRequiredService<ISemanticContextAnalyzer>();
+                var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<HybridConversationalMemoryDetector>>();
+                return new HybridConversationalMemoryDetector(deterministic, logger, semanticAnalyzer);
+            });
+        }
+        else
+        {
+            services.AddScoped<IConversationalMemoryDetector, ConversationalMemoryDetector>();
+        }
+        services.AddScoped<IConversationalMemoryService, ConversationalMemoryService>();
 
         // Phase 6 & 7: Semantic Memory Layer
         // Configuration-based provider selection
@@ -114,11 +139,6 @@ public static class ServiceCollectionExtensions
         // Semantic retrieval provider
         services.AddScoped<SemanticRetrievalProvider>();
         services.AddScoped<HybridRetrievalProvider>();
-
-        // Phase 8: LLM-Assisted Memory Intelligence
-        var memoryIntelligenceOptions = new MemoryIntelligenceOptions();
-        configuration.GetSection(MemoryIntelligenceOptions.SectionName).Bind(memoryIntelligenceOptions);
-        services.Configure<MemoryIntelligenceOptions>(configuration.GetSection(MemoryIntelligenceOptions.SectionName));
 
         // Memory policy engine
         services.AddScoped<IMemoryPolicy, MemoryPolicyEngine>();

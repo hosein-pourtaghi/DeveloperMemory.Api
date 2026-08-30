@@ -9,4 +9,6 @@ public interface IProjectRepository
     Task<Project> CreateAsync(Project project, CancellationToken ct = default);
     Task<Project> UpdateAsync(Project project, CancellationToken ct = default);
     Task<bool> DeleteAsync(Guid id, CancellationToken ct = default);
+    Task<Project?> GetByNameAsync(string name, CancellationToken ct = default);
+    Task<List<Project>> SearchByNameAsync(string searchTerm, CancellationToken ct = default);
 }

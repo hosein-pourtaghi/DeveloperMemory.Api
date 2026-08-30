@@ -21,7 +21,6 @@ namespace DeveloperMemory.Api.Infrastructure.Middleware;
 public class DiagnosticLoggingMiddleware
 {
     private readonly RequestDelegate _next;
-    private readonly IDiagnosticLogRepository? _repository;
     private readonly DiagnosticsSettings _settings;
     private readonly ILogger<DiagnosticLoggingMiddleware> _logger;
 
@@ -38,19 +37,26 @@ public class DiagnosticLoggingMiddleware
     public DiagnosticLoggingMiddleware(
         RequestDelegate next,
         ILogger<DiagnosticLoggingMiddleware> logger,
-        IOptions<DiagnosticsSettings> settings,
-        IDiagnosticLogRepository? repository = null)
+        IOptions<DiagnosticsSettings> settings)
     {
         _next = next;
         _logger = logger;
         _settings = settings.Value;
-        _repository = repository;
     }
 
     public async Task InvokeAsync(HttpContext context)
     {
         // Fast path: if diagnostics are disabled, skip all overhead
-        if (!_settings.PersistToDatabase || _repository == null)
+        if (!_settings.PersistToDatabase)
+        {
+            await _next(context);
+            return;
+        }
+
+        // Resolve scoped repository from request scope (middleware constructor
+        // runs in root provider — scoped services cannot be injected there).
+        var repository = context.RequestServices.GetService<IDiagnosticLogRepository>();
+        if (repository == null)
         {
             await _next(context);
             return;
@@ -76,7 +82,7 @@ public class DiagnosticLoggingMiddleware
             {
                 var entry = BuildLogEntry(context, sw.ElapsedMilliseconds, capturedException);
                 // Fire-and-forget with explicit non-blocking
-                _ = _repository.TryLogAsync(entry);
+                _ = repository.TryLogAsync(entry);
             }
             catch (Exception ex)
             {

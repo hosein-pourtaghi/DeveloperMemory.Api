@@ -539,6 +539,11 @@ public class OpenAIChatCompletionController : ControllerBase
             Tools = request.Tools,
             ToolChoice = request.ToolChoice,
             LogitBias = request.LogitBias,
+            // Preserve DeveloperMemory extension fields
+            Project = request.Project,
+            Tags = request.Tags,
+            WorkspaceId = request.WorkspaceId,
+            ProfileId = request.ProfileId,
             ExtensionData = request.ExtensionData
         };
     }

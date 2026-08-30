@@ -32,7 +32,7 @@ public class DiagnosticLoggingTests
     {
         var settings = Options.Create(new DiagnosticsSettings { PersistToDatabase = false });
         var middleware = new DiagnosticLoggingMiddleware(
-            _ => Task.CompletedTask, _mockLogger.Object, settings, _mockRepository.Object);
+            _ => Task.CompletedTask, _mockLogger.Object, settings);
 
         var context = CreateHttpContext("GET", "/v1/chat/completions");
         await middleware.InvokeAsync(context);
@@ -47,7 +47,7 @@ public class DiagnosticLoggingTests
     {
         var settings = Options.Create(new DiagnosticsSettings { PersistToDatabase = false });
         var middleware = new DiagnosticLoggingMiddleware(
-            _ => Task.CompletedTask, _mockLogger.Object, settings, null);
+            _ => Task.CompletedTask, _mockLogger.Object, settings);
 
         var context = CreateHttpContext("GET", "/v1/models");
         await middleware.InvokeAsync(context);
@@ -63,9 +63,9 @@ public class DiagnosticLoggingTests
     {
         var settings = Options.Create(new DiagnosticsSettings { PersistToDatabase = true });
         var middleware = new DiagnosticLoggingMiddleware(
-            _ => Task.CompletedTask, _mockLogger.Object, settings, _mockRepository.Object);
+            _ => Task.CompletedTask, _mockLogger.Object, settings);
 
-        var context = CreateHttpContext("POST", "/v1/chat/completions");
+        var context = CreateHttpContext("POST", "/v1/chat/completions", _mockRepository.Object);
         context.Response.StatusCode = 200;
 
         await middleware.InvokeAsync(context);
@@ -91,9 +91,9 @@ public class DiagnosticLoggingTests
             .Returns(Task.CompletedTask);
 
         var middleware = new DiagnosticLoggingMiddleware(
-            _ => Task.CompletedTask, _mockLogger.Object, settings, _mockRepository.Object);
+            _ => Task.CompletedTask, _mockLogger.Object, settings);
 
-        var context = CreateHttpContext("GET", "/v1/models");
+        var context = CreateHttpContext("GET", "/v1/models", _mockRepository.Object);
         context.Response.StatusCode = 200;
 
         await middleware.InvokeAsync(context);
@@ -120,9 +120,9 @@ public class DiagnosticLoggingTests
 
         var expectedException = new InvalidOperationException("Test failure");
         var middleware = new DiagnosticLoggingMiddleware(
-            _ => throw expectedException, _mockLogger.Object, settings, _mockRepository.Object);
+            _ => throw expectedException, _mockLogger.Object, settings);
 
-        var context = CreateHttpContext("POST", "/v1/chat/completions");
+        var context = CreateHttpContext("POST", "/v1/chat/completions", _mockRepository.Object);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => middleware.InvokeAsync(context));
 
@@ -138,9 +138,9 @@ public class DiagnosticLoggingTests
     {
         var settings = Options.Create(new DiagnosticsSettings { PersistToDatabase = true });
         var middleware = new DiagnosticLoggingMiddleware(
-            _ => throw new InvalidOperationException("boom"), _mockLogger.Object, settings, _mockRepository.Object);
+            _ => throw new InvalidOperationException("boom"), _mockLogger.Object, settings);
 
-        var context = CreateHttpContext("GET", "/test");
+        var context = CreateHttpContext("GET", "/test", _mockRepository.Object);
 
         // The original exception must still propagate
         await Assert.ThrowsAsync<InvalidOperationException>(() => middleware.InvokeAsync(context));
@@ -156,9 +156,9 @@ public class DiagnosticLoggingTests
             .ThrowsAsync(new Exception("Database connection lost"));
 
         var middleware = new DiagnosticLoggingMiddleware(
-            _ => Task.CompletedTask, _mockLogger.Object, settings, _mockRepository.Object);
+            _ => Task.CompletedTask, _mockLogger.Object, settings);
 
-        var context = CreateHttpContext("GET", "/v1/models");
+        var context = CreateHttpContext("GET", "/v1/models", _mockRepository.Object);
         context.Response.StatusCode = 200;
 
         // Must NOT throw — the request must succeed
@@ -179,9 +179,9 @@ public class DiagnosticLoggingTests
             .Returns(Task.CompletedTask);
 
         var middleware = new DiagnosticLoggingMiddleware(
-            _ => Task.CompletedTask, _mockLogger.Object, settings, _mockRepository.Object);
+            _ => Task.CompletedTask, _mockLogger.Object, settings);
 
-        var context = CreateHttpContext("GET", "/v1/models");
+        var context = CreateHttpContext("GET", "/v1/models", _mockRepository.Object);
         // Add an Authorization header
         context.Request.Headers["Authorization"] = "Bearer secret-token-123";
 
@@ -201,12 +201,12 @@ public class DiagnosticLoggingTests
     {
         var settings = Options.Create(new DiagnosticsSettings { PersistToDatabase = true });
         var middleware = new DiagnosticLoggingMiddleware(
-            _ => Task.CompletedTask, _mockLogger.Object, settings, null);
+            _ => Task.CompletedTask, _mockLogger.Object, settings);
 
-        var context = CreateHttpContext("GET", "/test");
+        var context = CreateHttpContext("GET", "/test"); // No repository in DI
         context.Response.StatusCode = 200;
 
-        // Should not throw even with null repository when enabled
+        // Should not throw even with missing repository
         await middleware.InvokeAsync(context);
         Assert.Equal(200, context.Response.StatusCode);
     }
@@ -224,9 +224,9 @@ public class DiagnosticLoggingTests
             .Returns(Task.CompletedTask);
 
         var middleware = new DiagnosticLoggingMiddleware(
-            _ => Task.CompletedTask, _mockLogger.Object, settings, _mockRepository.Object);
+            _ => Task.CompletedTask, _mockLogger.Object, settings);
 
-        var context = CreateHttpContext("GET", "/test");
+        var context = CreateHttpContext("GET", "/test", _mockRepository.Object);
         context.Response.StatusCode = 200;
 
         await middleware.InvokeAsync(context);
@@ -238,12 +238,18 @@ public class DiagnosticLoggingTests
 
     // ── Helper ──
 
-    private static HttpContext CreateHttpContext(string method, string path)
+    private static HttpContext CreateHttpContext(string method, string path, IDiagnosticLogRepository? repo = null)
     {
         var context = new DefaultHttpContext();
         context.Request.Method = method;
         context.Request.Path = path;
         context.Response.StatusCode = 200;
+
+        // Inject mock repository via RequestServices (matches production middleware resolution)
+        var services = new Moq.Mock<IServiceProvider>();
+        services.Setup(s => s.GetService(typeof(IDiagnosticLogRepository))).Returns(repo);
+        context.RequestServices = services.Object;
+
         return context;
     }
 }

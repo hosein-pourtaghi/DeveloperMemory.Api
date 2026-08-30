@@ -486,20 +486,9 @@ public class ConversationalMemoryService : IConversationalMemoryService
         if (!string.IsNullOrEmpty(workspaceId))
             return MemoryScope.Workspace;
 
-        // Check if the message mentions "this project" or "the project"
-        // which implies project scope if a project was established in conversation
-        if (ContainsProjectReference(message))
-        {
-            // If we have conversation history with a project mention, infer project scope
-            if (conversationHistory != null)
-            {
-                var recentProject = FindRecentProjectReference(conversationHistory);
-                if (recentProject != null)
-                    return MemoryScope.Project;
-            }
-        }
-
-        // Default to Global — conservative, avoids inventing project identity
+        // Default to Global — conservative, avoids inventing project identity.
+        // We do NOT infer Project scope merely from conversation mentions.
+        // Project scope requires an actual resolved projectId.
         return MemoryScope.Global;
     }
 

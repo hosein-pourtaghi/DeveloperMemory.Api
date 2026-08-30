@@ -164,6 +164,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IExtractionOrchestrator, ExtractionOrchestrator>();
 
         // LLM conflict detection (wraps deterministic)
+        services.AddScoped<MemoryConflictDetector>(); // Concrete type needed by factory below
         services.AddScoped<IMemoryConflictDetector>(sp =>
         {
             var deterministic = sp.GetRequiredService<MemoryConflictDetector>();

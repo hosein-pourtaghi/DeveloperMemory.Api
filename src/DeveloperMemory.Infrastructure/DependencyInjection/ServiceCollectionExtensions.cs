@@ -72,6 +72,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMemoryRanker, MemoryRanker>();
         services.AddScoped<IMemoryExtractionStrategy, DeterministicExtractionStrategy>();
 
+        // Phase R: Document Consolidation
+        services.AddScoped<IMemoryNormalizationService, MemoryNormalizer>();
+        services.AddScoped<IDocumentConsolidationService, DocumentConsolidationService>();
+
+        // Phase T: Agent Context Intelligence
+        services.AddScoped<IAgentContextProvider, AgentContextProvider>();
+        services.AddScoped<IAgentContextService, AgentContextService>();
+
         // LLM Intelligence options (shared by Phase L, 8, 10)
         var memoryIntelligenceOptions = new MemoryIntelligenceOptions();
         configuration.GetSection(MemoryIntelligenceOptions.SectionName).Bind(memoryIntelligenceOptions);

@@ -196,12 +196,12 @@ public class RelevanceRankerTests
     [Fact]
     public async Task TieBreaking_UsesImportanceThenRecencyThenMemoryId()
     {
-        // Two memories with identical scores except MemoryId
+        // Two memories with different content but similar scores
         var memoryA = new RetrievedMemory
         {
             MemoryId = Guid.NewGuid(),
-            Title = "Same Title",
-            Content = "Same content",
+            Title = "Title A",
+            Content = "Content about topic A in detail",
             Scope = MemoryScope.Global,
             Importance = 0.5,
             UpdatedAt = DateTime.UtcNow
@@ -210,14 +210,14 @@ public class RelevanceRankerTests
         var memoryB = new RetrievedMemory
         {
             MemoryId = Guid.NewGuid(),
-            Title = "Same Title",
-            Content = "Same content",
+            Title = "Title B",
+            Content = "Content about topic B in detail",
             Scope = MemoryScope.Global,
             Importance = 0.5,
             UpdatedAt = DateTime.UtcNow
         };
 
-        var request = TestDataHelper.CreateRetrievalRequest(query: "same title");
+        var request = TestDataHelper.CreateRetrievalRequest(query: "topic");
         var ranked = await _ranker.RankAsync([memoryA, memoryB], request);
 
         // Both should be present

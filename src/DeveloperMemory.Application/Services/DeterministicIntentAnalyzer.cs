@@ -15,6 +15,8 @@ public class DeterministicIntentAnalyzer : IIntentAnalyzer
         PromptContext? context = null,
         CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+
         if (string.IsNullOrWhiteSpace(input))
         {
             return Task.FromResult(new IntentAnalysisResult

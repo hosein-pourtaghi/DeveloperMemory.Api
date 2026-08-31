@@ -9,9 +9,9 @@ namespace DeveloperMemory.Infrastructure.Persistence;
 /// </summary>
 public class InMemoryExperimentAnalyticsService : IExperimentAnalyticsService
 {
-    private readonly InMemoryPromptExperimentRepository _repository;
+    private readonly IPromptExperimentRepository _repository;
 
-    public InMemoryExperimentAnalyticsService(InMemoryPromptExperimentRepository repository)
+    public InMemoryExperimentAnalyticsService(IPromptExperimentRepository repository)
     {
         _repository = repository;
     }

@@ -40,6 +40,7 @@ public class OpenAIChatCompletionController : ControllerBase
     private readonly KnowledgeService _knowledgeService;
     private readonly ProfileService _profileService;
     private readonly IPromptIntelligenceEngine _intelligenceEngine;
+    private readonly IAgentContextProvider _agentContextProvider;
     private readonly RequestLogger _requestLogger;
     private readonly ModelSelectionSettings _modelSelection;
     private readonly ICurrentUser _currentUser;
@@ -56,6 +57,7 @@ public class OpenAIChatCompletionController : ControllerBase
         KnowledgeService knowledgeService,
         ProfileService profileService,
         IPromptIntelligenceEngine intelligenceEngine,
+        IAgentContextProvider agentContextProvider,
         RequestLogger requestLogger,
         IOptions<ModelSelectionSettings> modelSelection,
         ICurrentUser currentUser,
@@ -65,6 +67,7 @@ public class OpenAIChatCompletionController : ControllerBase
         _knowledgeService = knowledgeService;
         _profileService = profileService;
         _intelligenceEngine = intelligenceEngine;
+        _agentContextProvider = agentContextProvider;
         _requestLogger = requestLogger;
         _modelSelection = modelSelection.Value;
         _currentUser = currentUser;
@@ -155,6 +158,36 @@ public class OpenAIChatCompletionController : ControllerBase
                 projectGuid = parsed;
             }
 
+            // ── Step 4a: Resolve agent context (Phase W integration) ──
+            // When agent_id is provided in the request, resolve agent type and task intent
+            // to enrich memory retrieval. Agent context does NOT bypass privacy/isolation.
+            AgentContext? agentContext = null;
+            if (!string.IsNullOrWhiteSpace(request.AgentId))
+            {
+                var agentRequest = new AgentContextRequest
+                {
+                    AgentId = request.AgentId,
+                    Task = searchQuery,
+                    ProjectId = projectGuid,
+                    WorkspaceId = request.WorkspaceId,
+                    Tags = request.Tags,
+                    ConversationHistory = conversationHistory
+                };
+
+                // Apply agent_type hint if provided
+                if (!string.IsNullOrWhiteSpace(request.AgentType) &&
+                    Enum.TryParse<DeveloperMemory.Application.Contracts.AgentType>(request.AgentType, true, out var parsedAgentType))
+                {
+                    agentRequest.AgentType = parsedAgentType;
+                }
+
+                agentContext = _agentContextProvider.Resolve(agentRequest);
+
+                _logger.LogInformation(
+                    "Agent context resolved: agent={AgentId}, type={AgentType}, intent={Intent}, confidence={Confidence:F2}",
+                    agentContext.AgentId, agentContext.AgentType, agentContext.TaskIntent, agentContext.Confidence);
+            }
+
             var promptPackage = await _intelligenceEngine.ProcessAsync(
                 searchQuery ?? string.Empty,
                 _currentUser.UserId,
@@ -165,6 +198,7 @@ public class OpenAIChatCompletionController : ControllerBase
                 knowledgeContext: knowledgeContext,
                 tags: request.Tags,
                 conversationHistory: conversationHistory,
+                agentContext: agentContext,
                 ct: cancellationToken);
 
             _logger.LogInformation(

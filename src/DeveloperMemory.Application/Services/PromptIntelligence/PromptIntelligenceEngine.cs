@@ -66,6 +66,7 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
         string? knowledgeContext = null,
         List<string>? tags = null,
         List<string>? conversationHistory = null,
+        AgentContext? agentContext = null,
         CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -150,19 +151,33 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
         }
 
         // ── Stage 2: Memory Retrieval (via centralized pipeline) ──
+        // Agent context enriches the retrieval request with scope/category signals
+        // but does NOT bypass ScopeResolver, PrivacyFilter, LifecycleFilter, or RelevanceRanker.
         PromptContext context;
         var retrievalStopwatch = Stopwatch.StartNew();
         try
         {
+            // Resolve effective project/workspace from agent context when explicit values are absent
+            var effectiveProjectId = projectId;
+            var effectiveWorkspaceId = workspaceId;
+            if (agentContext != null)
+            {
+                effectiveProjectId ??= agentContext.ProjectId;
+                effectiveWorkspaceId ??= agentContext.WorkspaceId;
+            }
+
             var retrievalRequest = new RetrievalRequest
             {
                 OwnerId = userId,
                 UserId = userId,
-                ProjectId = projectId,
-                WorkspaceId = workspaceId,
+                ProjectId = effectiveProjectId,
+                WorkspaceId = effectiveWorkspaceId,
                 Query = userRequest,
                 MaximumResults = 20,
-                ContextTokenBudget = contextTokenBudget
+                ContextTokenBudget = contextTokenBudget,
+                // Agent context enriches category filtering without bypassing privacy
+                RequiredCategories = agentContext != null ? BuildAgentRequiredCategories(agentContext) : null,
+                ExcludedCategories = agentContext != null ? BuildAgentExcludedCategories(agentContext) : null
             };
 
             context = await _retrievalService.BuildPromptContextAsync(retrievalRequest, ct);
@@ -524,6 +539,34 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
             Intent = IntentType.General,
             TaskType = TaskType.General,
             UserGoal = $"General task: {(userRequest.Length > 100 ? userRequest[..100] + "..." : userRequest)}"
+        };
+    }
+
+    /// <summary>
+    /// Builds required categories from agent context.
+    /// Returns null (no filter) — the agent context influences scoring via the
+    /// existing RelevanceRanker, not by hard-filtering categories that may not
+    /// exist on memories.
+    /// </summary>
+    private static List<string>? BuildAgentRequiredCategories(AgentContext agentContext)
+    {
+        // Category hard-filtering would exclude relevant memories that lack tags.
+        // Instead, agent context influences relevance scoring through the existing
+        // RelevanceRanker which already considers memory type relevance.
+        return null;
+    }
+
+    /// <summary>
+    /// Builds excluded categories from agent context.
+    /// Agent types may have clear exclusion rules (e.g., DevOps agent excludes frontend).
+    /// Returns null (no exclusion) for general or unspecified agent types.
+    /// </summary>
+    private static List<string>? BuildAgentExcludedCategories(AgentContext agentContext)
+    {
+        return agentContext.AgentType switch
+        {
+            AgentType.DevOps => ["frontend"],
+            _ => null
         };
     }
 

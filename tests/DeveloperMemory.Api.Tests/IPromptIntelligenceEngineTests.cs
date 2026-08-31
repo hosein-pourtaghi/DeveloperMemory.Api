@@ -35,6 +35,7 @@ public class StubPromptIntelligenceEngine : IPromptIntelligenceEngine
         string? knowledgeContext = null,
         List<string>? tags = null,
         List<string>? conversationHistory = null,
+        AgentContext? agentContext = null,
         CancellationToken ct = default)
     {
         LastUserRequest = userRequest;

@@ -76,12 +76,20 @@ public class SemanticRetrievalProvider : IMemoryRetrievalProvider
                 return [];
             }
 
-            // Step 3: Load matching memories from database
+            // Step 3: Load matching memories from database (with owner filtering)
             var memoryIds = searchResults.Select(r => r.MemoryId).ToList();
-            var memories = await _context.MemoryEntries
+            var memoriesQuery = _context.MemoryEntries
                 .AsNoTracking()
-                .Where(e => memoryIds.Contains(e.Id) && e.State != MemoryState.Deleted)
-                .ToListAsync(ct);
+                .Where(e => memoryIds.Contains(e.Id) && e.State != MemoryState.Deleted);
+
+            // Owner isolation — mandatory at DB level, fail closed
+            if (string.IsNullOrEmpty(request.OwnerId))
+            {
+                return [];
+            }
+            memoriesQuery = memoriesQuery.Where(e => e.OwnerId == request.OwnerId);
+
+            var memories = await memoriesQuery.ToListAsync(ct);
 
             // Step 4: Apply scope/project/workspace filtering
             var filtered = ApplyScopeFilter(memories, request);

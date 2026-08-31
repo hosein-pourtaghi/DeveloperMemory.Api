@@ -1,8 +1,9 @@
+using DeveloperMemory.Domain.Entities;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DeveloperMemory.Application.Contracts;
-using DeveloperMemory.Infrastructure.Configuration;
+using DeveloperMemory.Domain.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 

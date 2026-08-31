@@ -34,6 +34,14 @@ public class KeywordRetrievalProvider : IMemoryRetrievalProvider
             .AsNoTracking()
             .Where(e => e.State != MemoryState.Deleted);
 
+        // ── Owner isolation (DB level) — mandatory, fail closed ──
+        // If OwnerId is missing/empty, return no results (fail closed, not fail open)
+        if (string.IsNullOrEmpty(request.OwnerId))
+        {
+            return [];
+        }
+        query = query.Where(e => e.OwnerId == request.OwnerId);
+
         // ── Scope filtering (DB level) ──
         if (request.RequestedScopes != null && request.RequestedScopes.Count > 0)
         {

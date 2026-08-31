@@ -1,5 +1,6 @@
 using System.Diagnostics.Metrics;
 using DeveloperMemory.Application.Contracts;
+using DeveloperMemory.Application.Services;
 
 namespace DeveloperMemory.Infrastructure.Persistence;
 

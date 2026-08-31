@@ -162,6 +162,8 @@ public class MemoryRetrievalService : IMemoryRetrievalService
             UserId = entry.UserId,
             Classification = entry.Classification,
             Importance = entry.Importance,
+            Confidence = entry.Confidence,
+            MemoryType = entry.MemoryType,
             Source = entry.Source,
             Tags = tags,
             UpdatedAt = entry.UpdatedAt,

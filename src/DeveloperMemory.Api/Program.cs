@@ -3,9 +3,16 @@ using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using DeveloperMemory.Api.Abstractions;
+using DeveloperMemory.Api.Infrastructure.Security;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
+using DeveloperMemory.Api.Infrastructure.Authentication;
+using Microsoft.AspNetCore.Authentication;
 using DeveloperMemory.Api.Services;
 using DeveloperMemory.Api.Infrastructure.Configuration;
 using DeveloperMemory.Api.Infrastructure.Middleware;
+using DeveloperMemory.Domain.Interfaces;
 using DeveloperMemory.Infrastructure.DependencyInjection;
 using DeveloperMemory.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -69,6 +76,32 @@ builder.Host.UseSerilog((context, services) =>
 });
 
 // ── Infrastructure (EF Core, Repositories, Services) ──
+// If PostgreSQL is configured but unreachable at startup, fall back to in-memory.
+var useInMemoryConfig = builder.Configuration.GetValue<bool>("UseInMemoryDatabase");
+if (!useInMemoryConfig)
+{
+    var connStr = builder.Configuration.GetConnectionString("DefaultConnection");
+    if (string.IsNullOrEmpty(connStr))
+    {
+        Log.Warning("No 'DefaultConnection' configured. Falling back to in-memory database.");
+        builder.Configuration["UseInMemoryDatabase"] = "true";
+    }
+    else
+    {
+        try
+        {
+            // Quick connectivity check before full service registration
+            using var testConn = new Npgsql.NpgsqlConnection(connStr);
+            testConn.Open();
+            testConn.Close();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "PostgreSQL unreachable. Falling back to in-memory database.");
+            builder.Configuration["UseInMemoryDatabase"] = "true";
+        }
+    }
+}
 builder.Services.AddDeveloperMemoryInfrastructure(builder.Configuration);
 
 // Add services to the container
@@ -127,22 +160,145 @@ builder.Services.AddSwaggerGen(c =>
 // Configure strongly-typed settings
 builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AppSettings"));
 builder.Services.Configure<ModelSelectionSettings>(builder.Configuration.GetSection("AppSettings:ModelSelection"));
+builder.Services.Configure<DiagnosticsSettings>(builder.Configuration.GetSection(DiagnosticsSettings.SectionName));
 
 // Register existing services (file-based knowledge and profiles)
 builder.Services.AddSingleton<ProfileService>();
 builder.Services.AddSingleton<KnowledgeService>();
-builder.Services.AddSingleton<PromptBuilder>();
 builder.Services.AddSingleton<RequestLogger>();
-builder.Services.AddHttpClient<FreeLlmApiClient>();
 
-// Add CORS
+// Register the model gateway: FreeLlmApiClient is the current provider-specific implementation.
+// To swap providers, change this registration to a different IModelGateway implementation.
+builder.Services.AddHttpClient<FreeLlmApiClient>();
+builder.Services.AddSingleton<IModelGateway>(sp => sp.GetRequiredService<FreeLlmApiClient>());
+
+// Register the memory retriever: ContextRetrievalService orchestrates persistent memory
+// and knowledge document retrieval behind the IMemoryRetriever abstraction.
+// To change retrieval strategy (e.g., add vector search), replace this registration.
+builder.Services.AddScoped<IMemoryRetriever, ContextRetrievalService>();
+
+
+
+// ── Authentication (API Key via Bearer token) ──
+builder.Services.Configure<ApiKeySettings>(builder.Configuration.GetSection("Authentication"));
+builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = "DevelopmentOrApiKey";
+        options.DefaultChallengeScheme = "DevelopmentOrApiKey";
+    })
+    .AddPolicyScheme("DevelopmentOrApiKey", "Development bypass or API key", options =>
+    {
+        options.ForwardDefaultSelector = context =>
+        {
+            var settings = context.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<ApiKeySettings>>().Value;
+            var environment = context.RequestServices.GetRequiredService<IHostEnvironment>();
+            var hasBearerToken = context.Request.Headers.TryGetValue("Authorization", out var authorization)
+                && authorization.Any(value => value.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase));
+
+            return environment.IsDevelopment() && settings.DevelopmentBypass && !hasBearerToken
+                ? "Development"
+                : "ApiKey";
+        };
+    })
+    .AddScheme<AuthenticationSchemeOptions, DevelopmentAuthenticationHandler>("Development", options => { })
+    .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>("ApiKey", options => { });
+builder.Services.AddAuthorization();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<DeveloperMemory.Application.Contracts.ICurrentUser, HttpContextCurrentUser>();
+
+// ── Security Audit Trail ──
+// Persistent audit for PostgreSQL, in-memory for development/testing
+if (!builder.Configuration.GetValue<bool>("UseInMemoryDatabase"))
+{
+    builder.Services.AddScoped<IAuditRepository, AuditRepository>();
+    builder.Services.AddScoped<ISecurityAuditService, PersistentSecurityAuditService>();
+}
+else
+{
+    builder.Services.AddSingleton<ISecurityAuditService, InMemorySecurityAuditService>();
+}
+
+// ── Rate Limiting (per-identity partitioned by endpoint category) ──
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = 429;
+
+    // Single partitioned limiter: partitions by authenticated identity (userId or IP),
+    // then applies per-endpoint-category limits based on the request path.
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+    {
+        var partitionKey = httpContext.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(partitionKey))
+        {
+            partitionKey = $"ip:{httpContext.Connection.RemoteIpAddress}";
+        }
+
+        var path = httpContext.Request.Path.Value ?? string.Empty;
+
+        // Key management endpoints: 20/min per identity
+        if (path.StartsWith("/api/ApiKey", StringComparison.OrdinalIgnoreCase))
+        {
+            return RateLimitPartition.GetFixedWindowLimiter(
+                $"km:{partitionKey}",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 20,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0
+                });
+        }
+
+        // Expensive retrieval/query endpoints: 50/min per identity
+        if (path.Contains("/query", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/retrieve", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/analyze", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/embedding", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/v1/chat/completions", StringComparison.OrdinalIgnoreCase))
+        {
+            return RateLimitPartition.GetFixedWindowLimiter(
+                $"ex:{partitionKey}",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 50,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0
+                });
+        }
+
+        // General endpoints: 200/min per identity
+        return RateLimitPartition.GetFixedWindowLimiter(
+            $"gen:{partitionKey}",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 200,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            });
+    });
+});
+
+// Add CORS - environment-specific
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("CorsPolicy", policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+
+        if (allowedOrigins.Length > 0)
+        {
+            policy.WithOrigins(allowedOrigins)
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        }
+        else
+        {
+            // No origins configured: block all cross-origin requests
+            policy.DisallowCredentials()
+                  .WithOrigins(Array.Empty<string>());
+        }
     });
 });
 
@@ -163,10 +319,19 @@ using (var scope = app.Services.CreateScope())
         }
         catch (Exception ex)
         {
-            Log.Warning(ex, "Database migration failed. Application will continue with in-memory fallback.");
+            Log.Warning(ex, "Database migration failed. Application running with PostgreSQL configuration but database may be degraded.");
         }
     }
+    else
+    {
+        // Ensure in-memory database is initialized
+        dbContext.Database.EnsureCreated();
+        Log.Information("Using in-memory database.");
+    }
 }
+
+// Diagnostic persistence middleware (captures HTTP diagnostics to PostgreSQL when enabled)
+app.UseMiddleware<DiagnosticLoggingMiddleware>();
 
 // Diagnostic: log incoming request bodies for /v1/*
 app.UseMiddleware<RequestLoggingMiddleware>();
@@ -187,7 +352,9 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseCors("AllowAll");
+app.UseCors("CorsPolicy");
+app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
 
@@ -207,4 +374,11 @@ app.MapGet("/health", async (DeveloperMemoryDbContext dbContext) =>
     });
 });
 
-app.Run();
+try
+{
+    app.Run();
+}
+catch (System.Exception ex)
+{
+    throw;
+}

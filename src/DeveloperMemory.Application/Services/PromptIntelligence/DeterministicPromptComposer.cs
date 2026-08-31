@@ -24,7 +24,9 @@ public class DeterministicPromptComposer : IPromptComposer
         PromptAnalysis analysis,
         List<PromptConstraint> constraints,
         List<ContextSection> sections,
-        string originalRequest)
+        string originalRequest,
+        string? profileContext = null,
+        string? knowledgeContext = null)
     {
         var instructions = new StringBuilder();
 
@@ -62,6 +64,20 @@ public class DeterministicPromptComposer : IPromptComposer
         {
             instructions.AppendLine("## Technical Context");
             instructions.AppendLine(string.Join(", ", analysis.TechnicalContext));
+            instructions.AppendLine();
+        }
+
+        // Profile context (if provided by the caller)
+        if (!string.IsNullOrWhiteSpace(profileContext))
+        {
+            instructions.AppendLine(profileContext);
+            instructions.AppendLine();
+        }
+
+        // Knowledge context (if provided by the caller)
+        if (!string.IsNullOrWhiteSpace(knowledgeContext))
+        {
+            instructions.AppendLine(knowledgeContext);
             instructions.AppendLine();
         }
 

@@ -79,17 +79,17 @@ public class ExperimentStatisticsAnalyzer : IExperimentStatisticsAnalyzer
         result.ConfidenceIntervalUpper = result.MeanDifference + criticalValue * standardError;
 
         // Summary
-        result.Significance switch
+        result.Summary = result.Significance switch
         {
             StatisticalSignificance.Significant =>
-                result.Summary = $"Significant difference detected (p={result.PValue:F4}). " +
-                                 $"Mean A={result.MeanA:F4}, Mean B={result.MeanB:F4}, " +
-                                 $"Difference={result.MeanDifference:F4}",
+                $"Significant difference detected (p={result.PValue:F4}). " +
+                $"Mean A={result.MeanA:F4}, Mean B={result.MeanB:F4}, " +
+                $"Difference={result.MeanDifference:F4}",
             StatisticalSignificance.NotSignificant =>
-                result.Summary = $"No significant difference detected (p={result.PValue:F4}). " +
-                                 $"Mean A={result.MeanA:F4}, Mean B={result.MeanB:F4}",
+                $"No significant difference detected (p={result.PValue:F4}). " +
+                $"Mean A={result.MeanA:F4}, Mean B={result.MeanB:F4}",
             _ =>
-                result.Summary = "Insufficient data for statistical analysis"
+                "Insufficient data for statistical analysis"
         };
 
         return result;
@@ -194,7 +194,7 @@ public class ExperimentStatisticsAnalyzer : IExperimentStatisticsAnalyzer
         // Lentz's continued fraction
         var f = 1.0;
         var c = 1.0;
-        var d = 0;
+        double d = 0;
 
         for (int i = 0; i <= 200; i++)
         {

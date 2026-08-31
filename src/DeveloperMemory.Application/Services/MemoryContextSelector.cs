@@ -99,7 +99,7 @@ public class MemoryContextSelector
         var ranked = ranker.Rank(eligible, query, context);
 
         // ── Step 3: Deduplicate by normalized content ──
-        var deduplicated = DeduplicateByContent(ranked);
+        var deduplicated = DeduplicateByContent(ranked.ToList());
 
         // ── Step 4: Select within budget ──
         var remainingBudget = budget;

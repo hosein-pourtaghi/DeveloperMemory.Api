@@ -1,27 +1,16 @@
 using DeveloperMemory.Domain.Entities;
+using DeveloperMemory.Domain.Enums;
 
 namespace DeveloperMemory.Domain.Interfaces;
 
-/// <summary>
-/// Service for ingesting new memory into the system.
-/// Handles normalization, duplicate detection, conflict detection,
-/// and lifecycle decisions. Returns structured results explaining
-/// what happened.
-/// </summary>
 public interface IMemoryIngestionService
 {
-    /// <summary>
-    /// Ingests a memory candidate into the system.
-    /// Returns a structured result describing the outcome.
-    /// </summary>
     Task<MemoryIngestionResult> IngestAsync(
         MemoryIngestionRequest request,
+        string ownerId,
         CancellationToken ct = default);
 }
 
-/// <summary>
-/// Request to ingest a memory into the system.
-/// </summary>
 public class MemoryIngestionRequest
 {
     public string Title { get; set; } = string.Empty;
@@ -40,9 +29,6 @@ public class MemoryIngestionRequest
     public string? MetadataJson { get; set; }
 }
 
-/// <summary>
-/// Result of a memory ingestion operation.
-/// </summary>
 public class MemoryIngestionResult
 {
     public MemoryIngestionOutcome Outcome { get; set; }
@@ -54,9 +40,6 @@ public class MemoryIngestionResult
     public bool WasPersisted { get; set; }
 }
 
-/// <summary>
-/// Possible outcomes of a memory ingestion operation.
-/// </summary>
 public enum MemoryIngestionOutcome
 {
     Created,

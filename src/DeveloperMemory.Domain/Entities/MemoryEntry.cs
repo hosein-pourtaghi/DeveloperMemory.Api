@@ -16,6 +16,11 @@ public class MemoryEntry : BaseEntity
     public Guid? ProjectId { get; set; }
     public string? WorkspaceId { get; set; }
     public string? UserId { get; set; }
+    /// <summary>
+    /// Server-controlled owner identifier. Derived from the authenticated principal.
+    /// All memory access is filtered by this field. Never set from client input.
+    /// </summary>
+    public string OwnerId { get; set; } = string.Empty;
     public string? Source { get; set; }
     public string? TagsJson { get; set; }
     public Guid? SupersededById { get; set; }

@@ -14,20 +14,20 @@ public class MemoryRepository : IMemoryRepository
         _context = context;
     }
 
-    public async Task<MemoryEntry?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    public async Task<MemoryEntry?> GetByIdAsync(Guid id, string ownerId, CancellationToken ct = default)
     {
         return await _context.MemoryEntries
             .AsNoTracking()
             .Include(e => e.Project)
-            .FirstOrDefaultAsync(e => e.Id == id, ct);
+            .FirstOrDefaultAsync(e => e.Id == id && e.OwnerId == ownerId, ct);
     }
 
-    public async Task<List<MemoryEntry>> GetByScopeAsync(MemoryScope scope, Guid? projectId = null, CancellationToken ct = default)
+    public async Task<List<MemoryEntry>> GetByScopeAsync(MemoryScope scope, string ownerId, Guid? projectId = null, CancellationToken ct = default)
     {
         var query = _context.MemoryEntries
             .AsNoTracking()
             .Include(e => e.Project)
-            .Where(e => e.Scope == scope && e.State != MemoryState.Deleted);
+            .Where(e => e.Scope == scope && e.OwnerId == ownerId && e.State != MemoryState.Deleted);
 
         if (projectId.HasValue)
         {
@@ -39,12 +39,12 @@ public class MemoryRepository : IMemoryRepository
             .ToListAsync(ct);
     }
 
-    public async Task<List<MemoryEntry>> SearchAsync(string query, MemoryScope? scope = null, Guid? projectId = null, CancellationToken ct = default)
+    public async Task<List<MemoryEntry>> SearchAsync(string query, string ownerId, MemoryScope? scope = null, Guid? projectId = null, CancellationToken ct = default)
     {
         var queryable = _context.MemoryEntries
             .AsNoTracking()
             .Include(e => e.Project)
-            .Where(e => e.State != MemoryState.Deleted);
+            .Where(e => e.OwnerId == ownerId && e.State != MemoryState.Deleted);
 
         if (scope.HasValue)
         {
@@ -56,7 +56,6 @@ public class MemoryRepository : IMemoryRepository
             queryable = queryable.Where(e => e.ProjectId == projectId.Value);
         }
 
-        // Keyword search across Title, Content, and TagsJson
         var queryLower = query.ToLowerInvariant();
         queryable = queryable.Where(e =>
             e.Title.ToLower().Contains(queryLower) ||
@@ -101,11 +100,11 @@ public class MemoryRepository : IMemoryRepository
         return true;
     }
 
-    public async Task<int> CountAsync(MemoryScope? scope = null, Guid? projectId = null, CancellationToken ct = default)
+    public async Task<int> CountAsync(string ownerId, MemoryScope? scope = null, Guid? projectId = null, CancellationToken ct = default)
     {
         var query = _context.MemoryEntries
             .AsNoTracking()
-            .Where(e => e.State != MemoryState.Deleted);
+            .Where(e => e.OwnerId == ownerId && e.State != MemoryState.Deleted);
 
         if (scope.HasValue)
         {

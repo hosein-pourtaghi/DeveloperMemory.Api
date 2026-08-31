@@ -32,6 +32,7 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
     private readonly IPromptComposer _composer;
     private readonly IPromptOptimizer _optimizer;
     private readonly IMemoryRetrievalService _retrievalService;
+    private readonly IConversationalMemoryService? _conversationalMemoryService;
     private readonly ILogger<PromptIntelligenceEngine> _logger;
 
     public PromptIntelligenceEngine(
@@ -41,7 +42,8 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
         IPromptComposer composer,
         IPromptOptimizer optimizer,
         IMemoryRetrievalService retrievalService,
-        ILogger<PromptIntelligenceEngine> logger)
+        ILogger<PromptIntelligenceEngine> logger,
+        IConversationalMemoryService? conversationalMemoryService = null)
     {
         _analyzer = analyzer;
         _constraintResolver = constraintResolver;
@@ -49,6 +51,7 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
         _composer = composer;
         _optimizer = optimizer;
         _retrievalService = retrievalService;
+        _conversationalMemoryService = conversationalMemoryService;
         _logger = logger;
     }
 
@@ -59,6 +62,10 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
         Guid? projectId = null,
         string? workspaceId = null,
         int contextTokenBudget = 4000,
+        string? profileContext = null,
+        string? knowledgeContext = null,
+        List<string>? tags = null,
+        List<string>? conversationHistory = null,
         CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -105,6 +112,43 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
             degradationReasons.Add("analysis_failed");
         }
 
+        // ── Stage 1.5: Conversational Memory Ingestion (non-fatal) ──
+        // Attempt to detect and persist durable information from the user message.
+        // This runs BEFORE retrieval so newly persisted memories are available
+        // for retrieval in the same request. Failures are completely isolated.
+        if (_conversationalMemoryService != null)
+        {
+            var ingestionStopwatch = Stopwatch.StartNew();
+            try
+            {
+                var ingestionResult = await _conversationalMemoryService.TryIngestAsync(
+                    userRequest, userId, projectId, workspaceId, tags, conversationHistory, ct);
+                ingestionStopwatch.Stop();
+                metadata.IngestionDurationMs = ingestionStopwatch.Elapsed.TotalMilliseconds;
+                metadata.IngestionDetected = ingestionResult.Detected;
+                metadata.IngestionCreatedCount = ingestionResult.CreatedCount;
+                metadata.IngestionDuplicateCount = ingestionResult.DuplicateCount;
+                metadata.IngestionSupersededCount = ingestionResult.SupersededCount;
+
+                if (ingestionResult.Failed)
+                {
+                    _logger.LogWarning(
+                        "Conversational memory ingestion failed (non-fatal): {Reason}",
+                        ingestionResult.FailureReason);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                ingestionStopwatch.Stop();
+                metadata.IngestionDurationMs = ingestionStopwatch.Elapsed.TotalMilliseconds;
+                _logger.LogWarning(ex, "Conversational memory ingestion failed (non-fatal)");
+            }
+        }
+
         // ── Stage 2: Memory Retrieval (via centralized pipeline) ──
         PromptContext context;
         var retrievalStopwatch = Stopwatch.StartNew();
@@ -112,6 +156,7 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
         {
             var retrievalRequest = new RetrievalRequest
             {
+                OwnerId = userId,
                 UserId = userId,
                 ProjectId = projectId,
                 WorkspaceId = workspaceId,
@@ -223,7 +268,8 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
         try
         {
             composition = _composer.Compose(
-                analysis, constraints, assemblyResult.Sections, userRequest);
+                analysis, constraints, assemblyResult.Sections, userRequest,
+                profileContext, knowledgeContext);
             compositionStopwatch.Stop();
             metadata.CompositionDurationMs = compositionStopwatch.Elapsed.TotalMilliseconds;
         }
@@ -477,7 +523,7 @@ public class PromptIntelligenceEngine : IPromptIntelligenceEngine
             OriginalRequest = userRequest,
             Intent = IntentType.General,
             TaskType = TaskType.General,
-            UserGoal = $"General task: {userRequest.Length > 100 ? userRequest[..100] + "..." : userRequest}"
+            UserGoal = $"General task: {(userRequest.Length > 100 ? userRequest[..100] + "..." : userRequest)}"
         };
     }
 

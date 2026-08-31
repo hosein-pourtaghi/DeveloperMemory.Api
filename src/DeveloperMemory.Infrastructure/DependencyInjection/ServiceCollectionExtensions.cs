@@ -3,6 +3,7 @@ using DeveloperMemory.Application.Services;
 using DeveloperMemory.Application.Services.PromptIntelligence;
 using DeveloperMemory.Application.Services.Retrieval;
 using DeveloperMemory.Domain.Interfaces;
+using DeveloperMemory.Domain.Configuration;
 using DeveloperMemory.Infrastructure.Configuration;
 using DeveloperMemory.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -43,6 +44,8 @@ public static class ServiceCollectionExtensions
         // Repositories
         services.AddScoped<IMemoryRepository, MemoryRepository>();
         services.AddScoped<IProjectRepository, ProjectRepository>();
+        services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
+        services.AddScoped<IDiagnosticLogRepository, DiagnosticLogRepository>();
 
         // Application services
         services.AddScoped<IMemoryService, MemoryService>();
@@ -68,6 +71,38 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMemoryConflictDetector, MemoryConflictDetector>();
         services.AddScoped<IMemoryRanker, MemoryRanker>();
         services.AddScoped<IMemoryExtractionStrategy, DeterministicExtractionStrategy>();
+
+        // Phase R: Document Consolidation
+        services.AddScoped<IMemoryNormalizationService, MemoryNormalizer>();
+        services.AddScoped<IDocumentConsolidationService, DocumentConsolidationService>();
+
+        // Phase T: Agent Context Intelligence
+        services.AddScoped<IAgentContextProvider, AgentContextProvider>();
+        services.AddScoped<IAgentContextService, AgentContextService>();
+
+        // LLM Intelligence options (shared by Phase L, 8, 10)
+        var memoryIntelligenceOptions = new MemoryIntelligenceOptions();
+        configuration.GetSection(MemoryIntelligenceOptions.SectionName).Bind(memoryIntelligenceOptions);
+        services.Configure<MemoryIntelligenceOptions>(configuration.GetSection(MemoryIntelligenceOptions.SectionName));
+
+        // Phase L: Conversational Memory Intelligence
+        services.AddScoped<ConversationalMemoryDetector>(); // Deterministic detector (used by hybrid)
+        if (memoryIntelligenceOptions.IsAvailable)
+        {
+            services.AddScoped<ISemanticContextAnalyzer, SemanticContextAnalyzer>();
+            services.AddScoped<IConversationalMemoryDetector>(sp =>
+            {
+                var deterministic = sp.GetRequiredService<ConversationalMemoryDetector>();
+                var semanticAnalyzer = sp.GetRequiredService<ISemanticContextAnalyzer>();
+                var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<HybridConversationalMemoryDetector>>();
+                return new HybridConversationalMemoryDetector(deterministic, logger, semanticAnalyzer);
+            });
+        }
+        else
+        {
+            services.AddScoped<IConversationalMemoryDetector, ConversationalMemoryDetector>();
+        }
+        services.AddScoped<IConversationalMemoryService, ConversationalMemoryService>();
 
         // Phase 6 & 7: Semantic Memory Layer
         // Configuration-based provider selection
@@ -113,11 +148,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<SemanticRetrievalProvider>();
         services.AddScoped<HybridRetrievalProvider>();
 
-        // Phase 8: LLM-Assisted Memory Intelligence
-        var memoryIntelligenceOptions = new MemoryIntelligenceOptions();
-        configuration.GetSection(MemoryIntelligenceOptions.SectionName).Bind(memoryIntelligenceOptions);
-        services.Configure<MemoryIntelligenceOptions>(configuration.GetSection(MemoryIntelligenceOptions.SectionName));
-
         // Memory policy engine
         services.AddScoped<IMemoryPolicy, MemoryPolicyEngine>();
 
@@ -142,6 +172,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IExtractionOrchestrator, ExtractionOrchestrator>();
 
         // LLM conflict detection (wraps deterministic)
+        services.AddScoped<MemoryConflictDetector>(); // Concrete type needed by factory below
         services.AddScoped<IMemoryConflictDetector>(sp =>
         {
             var deterministic = sp.GetRequiredService<MemoryConflictDetector>();
@@ -177,7 +208,7 @@ public static class ServiceCollectionExtensions
                 var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<LlmIntentAnalyzer>>();
                 var llm = new LlmIntentAnalyzer(httpClientFactory, options, logger);
                 var resolver = sp.GetRequiredService<IIntentResolver>();
-                var resolverLogger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<IntentResolver>>();
+                var resolverLogger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<HybridIntentAnalyzer>>();
                 return new HybridIntentAnalyzer(deterministic, llm, resolver, resolverLogger);
             });
         }
@@ -209,7 +240,7 @@ public static class ServiceCollectionExtensions
             // Fallback: in-memory audit for testing
             services.AddSingleton<IPromptIntelligenceAudit, InMemoryPromptAudit>();
             services.AddSingleton<IPromptQualityEvaluator, DeterministicPromptQualityEvaluator>();
-            services.AddSingleton<PromptProcessingRecordRepository>();
+            services.AddScoped<PromptProcessingRecordRepository>();
         }
 
         // Phase 12: Prompt Intelligence Evaluation, Experimentation & Observability

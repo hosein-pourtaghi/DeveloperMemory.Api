@@ -67,7 +67,7 @@ public class HybridRanker : IRetrievalRanker
 
             // Normalize other signals to [0,1]
             var confidenceScore = Math.Clamp(candidate.Confidence, 0.0, 1.0);
-            var scopeScore = NormalizeScopeRelevance(candidate);
+            var scopeScore = CalculateScopeRelevance(candidate);
             var projectScore = CalculateProjectRelevance(candidate, request);
             var recencyScore = CalculateRecencyScore(candidate);
             var importanceScore = Math.Clamp(candidate.Importance, 0.0, 1.0);

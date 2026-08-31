@@ -16,12 +16,12 @@ public class InMemoryMemoryRepository : IMemoryRepository
 {
     private readonly List<MemoryEntry> _entries = [];
 
-    public Task<MemoryEntry?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    public Task<MemoryEntry?> GetByIdAsync(Guid id, string ownerId, CancellationToken ct = default)
     {
         return Task.FromResult(_entries.FirstOrDefault(e => e.Id == id));
     }
 
-    public Task<List<MemoryEntry>> GetByScopeAsync(MemoryScope scope, Guid? projectId = null, CancellationToken ct = default)
+    public Task<List<MemoryEntry>> GetByScopeAsync(MemoryScope scope, string ownerId, Guid? projectId = null, CancellationToken ct = default)
     {
         var query = _entries.Where(e => e.Scope == scope && e.State != MemoryState.Deleted);
         if (projectId.HasValue)
@@ -29,7 +29,7 @@ public class InMemoryMemoryRepository : IMemoryRepository
         return Task.FromResult(query.OrderByDescending(e => e.UpdatedAt).ToList());
     }
 
-    public Task<List<MemoryEntry>> SearchAsync(string query, MemoryScope? scope = null, Guid? projectId = null, CancellationToken ct = default)
+    public Task<List<MemoryEntry>> SearchAsync(string query, string ownerId, MemoryScope? scope = null, Guid? projectId = null, CancellationToken ct = default)
     {
         var queryable = _entries.Where(e => e.State != MemoryState.Deleted);
         if (scope.HasValue)
@@ -67,7 +67,7 @@ public class InMemoryMemoryRepository : IMemoryRepository
         return Task.FromResult(_entries.RemoveAll(e => e.Id == id) > 0);
     }
 
-    public Task<int> CountAsync(MemoryScope? scope = null, Guid? projectId = null, CancellationToken ct = default)
+    public Task<int> CountAsync(string ownerId, MemoryScope? scope = null, Guid? projectId = null, CancellationToken ct = default)
     {
         var query = _entries.Where(e => e.State != MemoryState.Deleted);
         if (scope.HasValue)
@@ -110,6 +110,16 @@ public class InMemoryProjectRepository : IProjectRepository
     {
         return Task.FromResult(_projects.RemoveAll(p => p.Id == id) > 0);
     }
+
+    public Task<Project?> GetByNameAsync(string name, CancellationToken ct = default)
+    {
+        return Task.FromResult(_projects.FirstOrDefault(p => p.Name == name));
+    }
+
+    public Task<List<Project>> SearchByNameAsync(string searchTerm, CancellationToken ct = default)
+    {
+        return Task.FromResult(_projects.Where(p => p.Name.Contains(searchTerm)).OrderBy(p => p.Name).ToList());
+    }
 }
 
 public class MemoryServiceTests
@@ -134,7 +144,7 @@ public class MemoryServiceTests
             Tags = ["test", "dotnet"]
         };
 
-        var result = await _sut.CreateAsync(request);
+        var result = await _sut.CreateAsync(request, "test-user");
 
         Assert.NotEqual(Guid.Empty, result.Id);
         Assert.Equal("Test Memory", result.Title);
@@ -157,7 +167,7 @@ public class MemoryServiceTests
             ProjectId = null
         };
 
-        await Assert.ThrowsAsync<DomainException>(() => _sut.CreateAsync(request));
+        await Assert.ThrowsAsync<DomainException>(() => _sut.CreateAsync(request, "test-user"));
     }
 
     [Fact]
@@ -171,7 +181,7 @@ public class MemoryServiceTests
             ProjectId = Guid.NewGuid()
         };
 
-        await Assert.ThrowsAsync<ProjectNotFoundException>(() => _sut.CreateAsync(request));
+        await Assert.ThrowsAsync<ProjectNotFoundException>(() => _sut.CreateAsync(request, "test-user"));
     }
 
     [Fact]
@@ -187,7 +197,7 @@ public class MemoryServiceTests
             ProjectId = project.Id
         };
 
-        var result = await _sut.CreateAsync(request);
+        var result = await _sut.CreateAsync(request, "test-user");
 
         Assert.Equal(project.Id, result.ProjectId);
         Assert.Equal("TestProject", result.ProjectName);
@@ -196,7 +206,7 @@ public class MemoryServiceTests
     [Fact]
     public async Task GetByIdAsync_ReturnsNull_WhenNotFound()
     {
-        var result = await _sut.GetByIdAsync(Guid.NewGuid());
+        var result = await _sut.GetByIdAsync(Guid.NewGuid(), "test-user");
         Assert.Null(result);
     }
 
@@ -207,9 +217,9 @@ public class MemoryServiceTests
         {
             Title = "FindMe",
             Content = "Content"
-        });
+        }, "test-user");
 
-        var result = await _sut.GetByIdAsync(created.Id);
+        var result = await _sut.GetByIdAsync(created.Id, "test-user");
 
         Assert.NotNull(result);
         Assert.Equal("FindMe", result!.Title);
@@ -218,10 +228,10 @@ public class MemoryServiceTests
     [Fact]
     public async Task SearchAsync_FindsByTitle()
     {
-        await _sut.CreateAsync(new CreateMemoryRequest { Title = "PostgreSQL Setup", Content = "How to configure PG" });
-        await _sut.CreateAsync(new CreateMemoryRequest { Title = "Docker Config", Content = "How to configure containers" });
+        await _sut.CreateAsync(new CreateMemoryRequest { Title = "PostgreSQL Setup", Content = "How to configure PG" }, "test-user");
+        await _sut.CreateAsync(new CreateMemoryRequest { Title = "Docker Config", Content = "How to configure containers" }, "test-user");
 
-        var results = await _sut.SearchAsync("PostgreSQL");
+        var results = await _sut.SearchAsync("PostgreSQL", "test-user");
 
         Assert.Single(results);
         Assert.Equal("PostgreSQL Setup", results[0].Title);
@@ -230,10 +240,10 @@ public class MemoryServiceTests
     [Fact]
     public async Task SearchAsync_FindsByContent()
     {
-        await _sut.CreateAsync(new CreateMemoryRequest { Title = "Doc A", Content = "Redis caching strategy" });
-        await _sut.CreateAsync(new CreateMemoryRequest { Title = "Doc B", Content = "PostgreSQL replication" });
+        await _sut.CreateAsync(new CreateMemoryRequest { Title = "Doc A", Content = "Redis caching strategy" }, "test-user");
+        await _sut.CreateAsync(new CreateMemoryRequest { Title = "Doc B", Content = "PostgreSQL replication" }, "test-user");
 
-        var results = await _sut.SearchAsync("Redis");
+        var results = await _sut.SearchAsync("Redis", "test-user");
 
         Assert.Single(results);
         Assert.Equal("Doc A", results[0].Title);
@@ -243,7 +253,7 @@ public class MemoryServiceTests
     public async Task UpdateAsync_ReturnsNull_WhenNotFound()
     {
         await Assert.ThrowsAsync<MemoryNotFoundException>(
-            () => _sut.UpdateAsync(Guid.NewGuid(), new UpdateMemoryRequest { Title = "Updated" }));
+            () => _sut.UpdateAsync(Guid.NewGuid(), new UpdateMemoryRequest { Title = "Updated" }, "test-user"));
     }
 
     [Fact]
@@ -253,9 +263,9 @@ public class MemoryServiceTests
         {
             Title = "Original",
             Content = "Content"
-        });
+        }, "test-user");
 
-        var updated = await _sut.UpdateAsync(created.Id, new UpdateMemoryRequest { Title = "Updated" });
+        var updated = await _sut.UpdateAsync(created.Id, new UpdateMemoryRequest { Title = "Updated" }, "test-user");
 
         Assert.Equal("Updated", updated.Title);
     }
@@ -267,12 +277,12 @@ public class MemoryServiceTests
         {
             Title = "ToDelete",
             Content = "Content"
-        });
+        }, "test-user");
 
-        var deleted = await _sut.DeleteAsync(created.Id);
+        var deleted = await _sut.DeleteAsync(created.Id, "test-user");
 
         Assert.True(deleted);
-        var result = await _sut.GetByIdAsync(created.Id);
+        var result = await _sut.GetByIdAsync(created.Id, "test-user");
         Assert.NotNull(result);
         Assert.Equal(MemoryState.Deleted, result!.State);
     }
@@ -280,7 +290,7 @@ public class MemoryServiceTests
     [Fact]
     public async Task DeleteAsync_ReturnsFalse_WhenNotFound()
     {
-        var deleted = await _sut.DeleteAsync(Guid.NewGuid());
+        var deleted = await _sut.DeleteAsync(Guid.NewGuid(), "test-user");
         Assert.False(deleted);
     }
 
@@ -292,19 +302,19 @@ public class MemoryServiceTests
             Title = "Old Preference",
             Content = "Use Technology A",
             Tags = ["preference"]
-        });
+        }, "test-user");
 
         var replacement = await _sut.SupersedeAsync(original.Id, new CreateMemoryRequest
         {
             Title = "New Preference",
             Content = "Use Technology B",
             Tags = ["preference"]
-        });
+        }, "test-user");
 
         Assert.NotEqual(original.Id, replacement.Id);
         Assert.Equal("New Preference", replacement.Title);
 
-        var oldMemory = await _sut.GetByIdAsync(original.Id);
+        var oldMemory = await _sut.GetByIdAsync(original.Id, "test-user");
         Assert.NotNull(oldMemory);
         Assert.Equal(MemoryState.Superseded, oldMemory!.State);
         Assert.Equal(replacement.Id, oldMemory.SupersededById);
@@ -318,14 +328,14 @@ public class MemoryServiceTests
             Title = "Temporary",
             Content = "Short-lived",
             ExpiresAt = DateTime.UtcNow.AddHours(-1) // already expired
-        });
+        }, "test-user");
 
         await _sut.CreateAsync(new CreateMemoryRequest
         {
             Title = "Permanent",
             Content = "Long-lived",
             ExpiresAt = DateTime.UtcNow.AddHours(1) // not yet expired
-        });
+        }, "test-user");
 
         var expiredCount = await _sut.ExpireAsync();
 
@@ -335,11 +345,11 @@ public class MemoryServiceTests
     [Fact]
     public async Task GetByScopeAsync_EnforcesScopeIsolation()
     {
-        await _sut.CreateAsync(new CreateMemoryRequest { Title = "Global A", Content = "Global", Scope = MemoryScope.Global });
-        await _sut.CreateAsync(new CreateMemoryRequest { Title = "Global B", Content = "Global", Scope = MemoryScope.Global });
+        await _sut.CreateAsync(new CreateMemoryRequest { Title = "Global A", Content = "Global", Scope = MemoryScope.Global }, "test-user");
+        await _sut.CreateAsync(new CreateMemoryRequest { Title = "Global B", Content = "Global", Scope = MemoryScope.Global }, "test-user");
 
-        var globalEntries = await _sut.GetByScopeAsync(MemoryScope.Global);
-        var privateEntries = await _sut.GetByScopeAsync(MemoryScope.Private);
+        var globalEntries = await _sut.GetByScopeAsync(MemoryScope.Global, "test-user");
+        var privateEntries = await _sut.GetByScopeAsync(MemoryScope.Private, "test-user");
 
         Assert.Equal(2, globalEntries.Count);
         Assert.Empty(privateEntries);
@@ -348,10 +358,10 @@ public class MemoryServiceTests
     [Fact]
     public async Task GetStatsAsync_ReturnsCorrectCounts()
     {
-        await _sut.CreateAsync(new CreateMemoryRequest { Title = "A", Content = "Content", Scope = MemoryScope.Global });
-        await _sut.CreateAsync(new CreateMemoryRequest { Title = "B", Content = "Content", Scope = MemoryScope.Global });
+        await _sut.CreateAsync(new CreateMemoryRequest { Title = "A", Content = "Content", Scope = MemoryScope.Global }, "test-user");
+        await _sut.CreateAsync(new CreateMemoryRequest { Title = "B", Content = "Content", Scope = MemoryScope.Global }, "test-user");
 
-        var stats = await _sut.GetStatsAsync();
+        var stats = await _sut.GetStatsAsync("test-user");
 
         Assert.Equal(2, stats.TotalCount);
         Assert.Equal(2, stats.ActiveCount);

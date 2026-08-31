@@ -29,6 +29,16 @@ public static class PrivacyFilter
 
         foreach (var memory in memories)
         {
+            // Rule 0: Owner isolation — mandatory, fail closed
+            if (string.IsNullOrEmpty(request.OwnerId))
+            {
+                continue; // No owner context = no results
+            }
+            if (!string.Equals(memory.OwnerId, request.OwnerId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
             // Rule 1: Scope must be eligible
             if (!eligibleScopes.Contains(memory.Scope))
             {

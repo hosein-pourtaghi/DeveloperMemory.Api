@@ -377,9 +377,13 @@ public class ExperimentService : IExperimentService
 
         try
         {
+            var parsedEventType = Enum.TryParse<PromptAuditEventType>(eventType, true, out var parsed)
+                ? parsed
+                : PromptAuditEventType.ProcessingRecordCreated;
+
             await _audit.RecordEventAsync(new PromptAuditEvent
             {
-                EventType = eventType,
+                EventType = parsedEventType,
                 Details = details,
                 CorrelationId = experimentId.ToString()
             }, ct);

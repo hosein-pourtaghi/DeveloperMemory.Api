@@ -6,7 +6,7 @@ using DeveloperMemory.Domain.Entities;
 using DeveloperMemory.Domain.Enums;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using DeveloperMemory.Infrastructure.Configuration;
+using DeveloperMemory.Domain.Configuration;
 
 namespace DeveloperMemory.Application.Services;
 
@@ -198,7 +198,7 @@ public class LlmIntentAnalyzer : IIntentAnalyzer
                 ExplicitConstraints = response.ExplicitConstraints ?? [],
                 RequiresProjectContext = response.RequiresProjectContext,
                 IsMemoryInstruction = intent == IntentType.General && input.ToLowerInvariant().Contains("remember"),
-                GoalSummary = $"LLM analysis ({confidence:P0}): {input.Length > 80 ? input[..80] + "..." : input}",
+                GoalSummary = $"LLM analysis ({confidence:P0}): {(input.Length > 80 ? input[..80] + "..." : input)}",
                 IsSimpleQuery = intent == IntentType.General && input.Length < 100
             };
         }

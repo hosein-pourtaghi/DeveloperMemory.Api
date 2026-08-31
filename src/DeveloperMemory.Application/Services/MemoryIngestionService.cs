@@ -29,6 +29,7 @@ public class MemoryIngestionService : IMemoryIngestionService
 
     public async Task<MemoryIngestionResult> IngestAsync(
         MemoryIngestionRequest request,
+        string ownerId,
         CancellationToken ct = default)
     {
         // ── Step 1: Validate input ──
@@ -54,7 +55,7 @@ public class MemoryIngestionService : IMemoryIngestionService
         var normalizedContent = NormalizeContent(request.Content);
 
         // ── Step 3: Check for exact duplicates ──
-        var existingMemories = await GetCandidateMemories(request, ct);
+        var existingMemories = await GetCandidateMemories(request, ownerId, ct);
 
         var exactDuplicate = existingMemories.FirstOrDefault(e =>
             string.Equals(e.Content.Trim(), request.Content.Trim(), StringComparison.OrdinalIgnoreCase));
@@ -96,7 +97,7 @@ public class MemoryIngestionService : IMemoryIngestionService
 
         // ── Step 5: Detect conflicts ──
         var conflicts = _conflictDetector.DetectConflicts(
-            CreateTempMemory(request, normalizedContent),
+            CreateTempMemory(request, ownerId, normalizedContent),
             existingMemories);
 
         if (conflicts.Count > 0)
@@ -106,7 +107,7 @@ public class MemoryIngestionService : IMemoryIngestionService
             if (primaryConflict.ShouldSupersede && primaryConflict.Confidence >= 0.8)
             {
                 // High-confidence conflict with supersession recommendation
-                var newEntry = CreateMemoryEntry(request, normalizedContent);
+                var newEntry = CreateMemoryEntry(request, ownerId, normalizedContent);
                 newEntry.SupersedesId = primaryConflict.ExistingMemory.Id;
                 var created = await _memoryRepository.CreateAsync(newEntry, ct);
 
@@ -156,7 +157,7 @@ public class MemoryIngestionService : IMemoryIngestionService
         }
 
         // ── Step 6: Create new memory ──
-        var entry = CreateMemoryEntry(request, normalizedContent);
+        var entry = CreateMemoryEntry(request, ownerId, normalizedContent);
         var persisted = await _memoryRepository.CreateAsync(entry, ct);
 
         _logger.LogInformation(
@@ -173,18 +174,17 @@ public class MemoryIngestionService : IMemoryIngestionService
     }
 
     private async Task<List<MemoryEntry>> GetCandidateMemories(
-        MemoryIngestionRequest request, CancellationToken ct)
+        MemoryIngestionRequest request, string ownerId, CancellationToken ct)
     {
-        // Get memories in the same scope for comparison
         return request.Scope switch
         {
             MemoryScope.Project when request.ProjectId.HasValue =>
-                await _memoryRepository.GetByScopeAsync(MemoryScope.Project, request.ProjectId, ct),
+                await _memoryRepository.GetByScopeAsync(MemoryScope.Project, ownerId, request.ProjectId, ct),
             MemoryScope.Workspace when !string.IsNullOrEmpty(request.WorkspaceId) =>
-                await _memoryRepository.SearchAsync(request.Content, MemoryScope.Workspace, ct: ct),
+                await _memoryRepository.SearchAsync(request.Content, ownerId, MemoryScope.Workspace, ct: ct),
             MemoryScope.Private when !string.IsNullOrEmpty(request.UserId) =>
-                await _memoryRepository.SearchAsync(request.Content, MemoryScope.Private, ct: ct),
-            _ => await _memoryRepository.SearchAsync(request.Content, MemoryScope.Global, ct: ct)
+                await _memoryRepository.SearchAsync(request.Content, ownerId, MemoryScope.Private, ct: ct),
+            _ => await _memoryRepository.SearchAsync(request.Content, ownerId, MemoryScope.Global, ct: ct)
         };
     }
 
@@ -196,7 +196,7 @@ public class MemoryIngestionService : IMemoryIngestionService
         return text;
     }
 
-    private static MemoryEntry CreateTempMemory(MemoryIngestionRequest request, string normalizedContent)
+    private static MemoryEntry CreateTempMemory(MemoryIngestionRequest request, string ownerId, string normalizedContent)
     {
         return new MemoryEntry
         {
@@ -208,13 +208,14 @@ public class MemoryIngestionService : IMemoryIngestionService
             ProjectId = request.ProjectId,
             WorkspaceId = request.WorkspaceId,
             UserId = request.UserId,
+            OwnerId = ownerId,
             TagsJson = request.Tags != null
                 ? System.Text.Json.JsonSerializer.Serialize(request.Tags)
                 : null
         };
     }
 
-    private static MemoryEntry CreateMemoryEntry(MemoryIngestionRequest request, string normalizedContent)
+    private static MemoryEntry CreateMemoryEntry(MemoryIngestionRequest request, string ownerId, string normalizedContent)
     {
         return new MemoryEntry
         {
@@ -235,6 +236,7 @@ public class MemoryIngestionService : IMemoryIngestionService
             MetadataJson = request.MetadataJson,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
+            OwnerId = ownerId,
             TagsJson = request.Tags != null
                 ? System.Text.Json.JsonSerializer.Serialize(request.Tags)
                 : null

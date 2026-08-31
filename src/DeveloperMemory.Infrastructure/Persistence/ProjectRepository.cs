@@ -51,4 +51,20 @@ public class ProjectRepository : IProjectRepository
         await _context.SaveChangesAsync(ct);
         return true;
     }
+
+    public async Task<Project?> GetByNameAsync(string name, CancellationToken ct = default)
+    {
+        return await _context.Projects
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Name == name, ct);
+    }
+
+    public async Task<List<Project>> SearchByNameAsync(string searchTerm, CancellationToken ct = default)
+    {
+        return await _context.Projects
+            .AsNoTracking()
+            .Where(p => p.Name.Contains(searchTerm))
+            .OrderBy(p => p.Name)
+            .ToListAsync(ct);
+    }
 }

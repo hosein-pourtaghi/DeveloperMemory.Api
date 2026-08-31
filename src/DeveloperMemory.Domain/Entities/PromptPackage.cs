@@ -122,6 +122,32 @@ public class PromptIntelligenceMetadata
     public double AnalysisDurationMs { get; set; }
 
     /// <summary>
+    /// Duration of conversational memory ingestion (ms).
+    /// Zero if ingestion was not triggered or was skipped.
+    /// </summary>
+    public double IngestionDurationMs { get; set; }
+
+    /// <summary>
+    /// Whether conversational memory ingestion detected durable information.
+    /// </summary>
+    public bool IngestionDetected { get; set; }
+
+    /// <summary>
+    /// Number of memories created by conversational ingestion.
+    /// </summary>
+    public int IngestionCreatedCount { get; set; }
+
+    /// <summary>
+    /// Number of duplicates detected during ingestion.
+    /// </summary>
+    public int IngestionDuplicateCount { get; set; }
+
+    /// <summary>
+    /// Number of supersessions performed during ingestion.
+    /// </summary>
+    public int IngestionSupersededCount { get; set; }
+
+    /// <summary>
     /// Duration of constraint resolution (ms).
     /// </summary>
     public double ConstraintDurationMs { get; set; }

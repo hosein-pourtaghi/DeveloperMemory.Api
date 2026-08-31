@@ -352,3 +352,4 @@ DeveloperMemory.Api is **not**:
 - [CLAUDE.md](CLAUDE.md) — Complete technical reference
 - [AGENTS.md](AGENTS.md) — AI agent coding guide
 - [KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md) — Knowledge and profile format reference
+- [docs/ARCHITECTURE_AUDIT.md](docs/ARCHITECTURE_AUDIT.md) — Architecture audit and gap analysis

@@ -7,6 +7,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="DeveloperMemory.Tests" />
+    <InternalsVisibleTo Include="DeveloperMemory.Api.Tests" />
+    <InternalsVisibleTo Include="DeveloperMemory.Infrastructure.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\DeveloperMemory.Application\DeveloperMemory.Application.csproj" />
     <ProjectReference Include="..\DeveloperMemory.Domain\DeveloperMemory.Domain.csproj" />
   </ItemGroup>
@@ -18,6 +24,7 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL.NetTopologySuite" Version="10.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.0" />
   </ItemGroup>

@@ -74,17 +74,18 @@ Response back to AI Application
 - ✅ Clean Architecture (Domain → Application → Infrastructure → API)
 - ✅ Entity Framework Core with PostgreSQL
 - ✅ EF Core migrations
-- ✅ xUnit test project for repository layer
+- ✅ 3 test projects with 51 test methods (xUnit + EF Core InMemory)
 - ✅ Health check endpoint
 - ✅ OpenTelemetry integration (configurable)
 - ✅ Swagger/OpenAPI documentation
 - ✅ Serilog structured logging
+- ✅ Docker deployment (Dockerfile + docker-compose.yml)
+- ✅ PostgreSQL with pgvector extension (for future vector search)
 
 ### Not Yet Implemented
-- Authentication and authorization
-- Semantic/vector search (embeddings)
+- Authentication and authorization (enabled for Production; Development uses an auth-free local identity)
+- Semantic/vector search (embeddings — pgvector available but not integrated)
 - Automatic memory capture from conversations
-- Docker containerization
 - CI/CD pipeline
 - MCP integration
 - Agent runtime abstraction
@@ -97,13 +98,22 @@ See [CURRENT_STATUS.md](CURRENT_STATUS.md) for the full implementation inventory
 ## Architecture
 
 ```
-src/
-├── DeveloperMemory.Api/              # API layer, controllers, services, models
-├── DeveloperMemory.Application/      # Use cases, contracts, DTOs, exceptions
-├── DeveloperMemory.Domain/           # Entities, enums, repository interfaces
-└── DeveloperMemory.Infrastructure/   # EF Core, persistence, DI registration
-tests/
-└── DeveloperMemory.Infrastructure.Tests/  # xUnit repository tests
+DeveloperMemory.Api.sln (at repository root)
+│
+├── src/
+│   ├── DeveloperMemory.Domain/           # Entities, enums, repository interfaces
+│   ├── DeveloperMemory.Application/      # Use cases, contracts, DTOs
+│   ├── DeveloperMemory.Infrastructure/   # EF Core, persistence, DI
+│   └── DeveloperMemory.Api/              # Controllers, services, gateway
+│
+├── tests/
+│   ├── DeveloperMemory.Domain.Tests/        # Entity lifecycle tests (12 methods)
+│   ├── DeveloperMemory.Application.Tests/   # Service logic tests (16 methods)
+│   └── DeveloperMemory.Infrastructure.Tests/ # Repository tests (23 methods)
+│
+├── Dockerfile
+├── docker-compose.yml
+└── .dockerignore
 ```
 
 **Dependency direction:** Domain ← Application ← Infrastructure ← API
@@ -114,20 +124,51 @@ See [CLAUDE.md](CLAUDE.md) for complete technical reference and [PROJECT_VISION.
 
 ## Quick Start
 
+### With Docker (recommended)
+
 ```bash
-cd src/DeveloperMemory.Api
+# Local Development behavior: auth-free identity, in-memory database
+docker compose up api
+
+# Local Development behavior with PostgreSQL
+docker compose up api-postgres
+```
+
+Docker does not automatically disable authentication. The Compose services explicitly set `ASPNETCORE_ENVIRONMENT=Development` for local use. The Dockerfile defaults to `Production`, so a deployed container retains authentication and authorization; behavior is determined by `ASPNETCORE_ENVIRONMENT`.
+
+### Without Docker
+
+```bash
 dotnet restore
-dotnet run
+dotnet run --project src/DeveloperMemory.Api
 ```
 
 - **API**: `http://localhost:5041`
 - **Swagger UI**: `/swagger` (Development mode)
 - **Health Check**: `GET /health`
 
+Development runs without login, JWTs, API keys, or `Authorization` headers. The Development environment supplies a local identity for existing protected endpoints; Production and other non-development environments retain API-key authentication and authorization.
+
 ### Requirements
 
-- .NET 10.0 SDK
-- PostgreSQL (or set `"UseInMemoryDatabase": true` in appsettings.json)
+- .NET 10.0 SDK (or Docker)
+- PostgreSQL (or set `"UseInMemoryDatabase": true` — default in Docker)
+
+---
+
+## Running Tests
+
+```bash
+dotnet test
+```
+
+Or run specific test projects:
+
+```bash
+dotnet test tests/DeveloperMemory.Domain.Tests/
+dotnet test tests/DeveloperMemory.Application.Tests/
+dotnet test tests/DeveloperMemory.Infrastructure.Tests/
+```
 
 ---
 
@@ -200,14 +241,6 @@ Environment variables: `AppSettings__FreeLlmApi__BaseUrl`, `AppSettings__FreeLlm
 
 ---
 
-## Running Tests
-
-```bash
-dotnet test tests/DeveloperMemory.Infrastructure.Tests/
-```
-
----
-
 ## Documentation
 
 | Document | Purpose |
@@ -220,6 +253,7 @@ dotnet test tests/DeveloperMemory.Infrastructure.Tests/
 | [KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md) | Knowledge and profile format reference |
 | [DOCUMENTATION.md](DOCUMENTATION.md) | Documentation index |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
+| [docs/ARCHITECTURE_AUDIT.md](docs/ARCHITECTURE_AUDIT.md) | Architecture audit and gap analysis |
 
 ---
 

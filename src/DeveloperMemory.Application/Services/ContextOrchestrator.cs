@@ -58,6 +58,7 @@ public class ContextOrchestrator : IContextOrchestrator
             {
                 var retrievalRequest = new RetrievalRequest
                 {
+                    OwnerId = request.OwnerId ?? string.Empty,
                     UserId = request.UserId ?? string.Empty,
                     ProjectId = request.ProjectId,
                     WorkspaceId = request.WorkspaceId,

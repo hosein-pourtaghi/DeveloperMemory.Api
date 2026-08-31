@@ -11,9 +11,6 @@ services:
       - ./src/DeveloperMemory.Api/Knowledge:/app/Knowledge
       - ./src/DeveloperMemory.Api/Profiles:/app/Profiles
       - ./logs:/app/logs
-    depends_on:
-      - redis
-
   api-postgres:
     build: .
     ports:
@@ -21,8 +18,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_started
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - UseInMemoryDatabase=false
@@ -49,10 +44,6 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
 
 volumes:
   pgdata:

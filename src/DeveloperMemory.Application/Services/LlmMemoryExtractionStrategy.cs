@@ -6,7 +6,7 @@ using DeveloperMemory.Domain.Enums;
 using DeveloperMemory.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using DeveloperMemory.Infrastructure.Configuration;
+using DeveloperMemory.Domain.Configuration;
 
 namespace DeveloperMemory.Application.Services;
 

@@ -10,11 +10,13 @@ public class ProjectService : IProjectService
 {
     private readonly IProjectRepository _projectRepository;
     private readonly IMemoryRepository _memoryRepository;
+    private readonly ICurrentUser _currentUser;
 
-    public ProjectService(IProjectRepository projectRepository, IMemoryRepository memoryRepository)
+    public ProjectService(IProjectRepository projectRepository, IMemoryRepository memoryRepository, ICurrentUser currentUser)
     {
         _projectRepository = projectRepository;
         _memoryRepository = memoryRepository;
+        _currentUser = currentUser;
     }
 
     public async Task<ProjectDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -70,10 +72,28 @@ public class ProjectService : IProjectService
         return await _projectRepository.DeleteAsync(id, ct);
     }
 
+    public async Task<ProjectDto?> GetByNameAsync(string name, CancellationToken ct = default)
+    {
+        var project = await _projectRepository.GetByNameAsync(name, ct);
+        if (project == null) return null;
+        return await MapToDtoAsync(project, ct);
+    }
+
+    public async Task<List<ProjectDto>> SearchByNameAsync(string searchTerm, CancellationToken ct = default)
+    {
+        var projects = await _projectRepository.SearchByNameAsync(searchTerm, ct);
+        var dtos = new List<ProjectDto>();
+        foreach (var project in projects)
+        {
+            dtos.Add(await MapToDtoAsync(project, ct));
+        }
+        return dtos;
+    }
+
     private async Task<ProjectDto> MapToDtoAsync(Project project, CancellationToken ct = default)
     {
         var memoryCount = await _memoryRepository.CountAsync(
-            projectId: project.Id, ct: ct);
+            _currentUser.UserId, projectId: project.Id, ct: ct);
 
         return new ProjectDto
         {

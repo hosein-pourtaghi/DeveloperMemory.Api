@@ -1,3 +1,4 @@
+using DeveloperMemory.Api.Abstractions;
 using DeveloperMemory.Api.Infrastructure.Configuration;
 using DeveloperMemory.Api.Models;
 using Microsoft.Extensions.Options;
@@ -15,9 +16,10 @@ namespace DeveloperMemory.Api.Services;
 
 /// <summary>
 /// HTTP client for communicating with any OpenAI-compatible LLM provider.
+/// Implements <see cref="IModelGateway"/> as the provider-specific adapter.
 /// Supports both streaming and non-streaming requests. Configured via AppSettings.
 /// </summary>
-public class FreeLlmApiClient
+public class FreeLlmApiClient : IModelGateway
 {
     private readonly HttpClient _httpClient;
     private readonly AppSettings _appSettings;
@@ -131,11 +133,9 @@ public class FreeLlmApiClient
 
     /// <summary>
     /// Sends a streaming chat completion request to the downstream provider.
-    /// Returns the raw HTTP response message so the caller can stream the body
-    /// directly to the client without buffering.
-    /// The caller is responsible for disposing the response.
+    /// Returns a readable stream of SSE data. The caller is responsible for disposing the stream.
     /// </summary>
-    public async Task<HttpResponseMessage> SendStreamingCompletionAsync(
+    public async Task<Stream> SendStreamingCompletionAsync(
         OpenAIChatCompletionRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -167,7 +167,10 @@ public class FreeLlmApiClient
             throw new DownstreamProviderException(response.StatusCode, errorContent);
         }
 
-        return response;
+        // Wrap the stream so that disposing it also disposes the HttpResponseMessage,
+        // ensuring the HTTP connection stays valid while the stream is being read.
+        var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        return new ManagedStream(stream, response);
     }
 
     // ── Model Listing ──────────────────────────────────────────────────────
@@ -272,19 +275,6 @@ public class FreeLlmApiClient
     }
 }
 
-/// <summary>
-/// Exception thrown when the downstream provider returns an error.
-/// Carries the HTTP status code and raw error content for translation into OpenAI-compatible errors.
-/// </summary>
-public class DownstreamProviderException : Exception
-{
-    public HttpStatusCode StatusCode { get; }
-    public string RawErrorContent { get; }
-
-    public DownstreamProviderException(HttpStatusCode statusCode, string rawErrorContent)
-        : base($"Downstream provider returned {statusCode}: {rawErrorContent}")
-    {
-        StatusCode = statusCode;
-        RawErrorContent = rawErrorContent;
-    }
-}
+// DownstreamProviderException has been moved to DeveloperMemory.Api.Abstractions namespace.
+// This class remains as a type forwarder for backward compatibility.
+// New code should reference DeveloperMemory.Api.Abstractions.DownstreamProviderException.

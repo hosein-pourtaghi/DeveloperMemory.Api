@@ -1,4 +1,5 @@
 using DeveloperMemory.Application.Contracts;
+using Microsoft.AspNetCore.Authorization;
 using DeveloperMemory.Application.DTOs;
 using DeveloperMemory.Application.Exceptions;
 using DeveloperMemory.Domain.Entities;
@@ -10,6 +11,7 @@ namespace DeveloperMemory.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class MemoryController : ControllerBase
 {
     private readonly IMemoryService _memoryService;
@@ -17,6 +19,7 @@ public class MemoryController : ControllerBase
     private readonly IMemoryIngestionService _ingestionService;
     private readonly IMemoryRanker _memoryRanker;
     private readonly IEmbeddingService _embeddingService;
+    private readonly ICurrentUser _currentUser;
     private readonly ILogger<MemoryController> _logger;
 
     public MemoryController(
@@ -25,6 +28,7 @@ public class MemoryController : ControllerBase
         IMemoryIngestionService ingestionService,
         IMemoryRanker memoryRanker,
         IEmbeddingService embeddingService,
+        ICurrentUser currentUser,
         ILogger<MemoryController> logger)
     {
         _memoryService = memoryService;
@@ -32,6 +36,7 @@ public class MemoryController : ControllerBase
         _ingestionService = ingestionService;
         _memoryRanker = memoryRanker;
         _embeddingService = embeddingService;
+        _currentUser = currentUser;
         _logger = logger;
     }
 
@@ -53,7 +58,7 @@ public class MemoryController : ControllerBase
 
         try
         {
-            var memory = await _memoryService.CreateAsync(request, ct);
+            var memory = await _memoryService.CreateAsync(request, _currentUser.UserId, ct);
 
             // Generate embedding asynchronously (fire-and-forget for now)
             if (_embeddingService.IsSemanticAvailable)
@@ -89,7 +94,7 @@ public class MemoryController : ControllerBase
             return BadRequest(new { error = new { message = "Content is required.", code = "validation_error" } });
         }
 
-        var result = await _ingestionService.IngestAsync(request, ct);
+        var result = await _ingestionService.IngestAsync(request, _currentUser.UserId, ct);
 
         // Generate embedding for new memories
         if (result.WasPersisted && result.Memory != null && _embeddingService.IsSemanticAvailable)
@@ -123,7 +128,7 @@ public class MemoryController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<MemoryDto>> GetById(Guid id, CancellationToken ct)
     {
-        var memory = await _memoryService.GetByIdAsync(id, ct);
+        var memory = await _memoryService.GetByIdAsync(id, _currentUser.UserId, ct);
         if (memory == null) return NotFound();
         return Ok(memory);
     }
@@ -141,20 +146,20 @@ public class MemoryController : ControllerBase
     {
         if (!string.IsNullOrWhiteSpace(query))
         {
-            var results = await _memoryService.SearchAsync(query, scope, projectId, tags, ct);
+            var results = await _memoryService.SearchAsync(query, _currentUser.UserId, scope, projectId, tags, ct);
             return Ok(results);
         }
 
         if (scope.HasValue)
         {
-            var entries = await _memoryService.GetByScopeAsync(scope.Value, projectId, ct);
+            var entries = await _memoryService.GetByScopeAsync(scope.Value, _currentUser.UserId, projectId, ct);
             return Ok(entries);
         }
 
         var allEntries = new List<MemoryDto>();
         foreach (MemoryScope s in Enum.GetValues<MemoryScope>())
         {
-            allEntries.AddRange(await _memoryService.GetByScopeAsync(s, projectId, ct));
+            allEntries.AddRange(await _memoryService.GetByScopeAsync(s, _currentUser.UserId, projectId, ct));
         }
         return Ok(allEntries);
     }
@@ -176,7 +181,8 @@ public class MemoryController : ControllerBase
 
         var retrievalRequest = new RetrievalRequest
         {
-            UserId = request.UserId ?? string.Empty,
+            OwnerId = _currentUser.UserId,
+            UserId = _currentUser.UserId,
             ProjectId = request.ProjectId,
             WorkspaceId = request.WorkspaceId,
             Query = request.Query,
@@ -228,7 +234,7 @@ public class MemoryController : ControllerBase
     [HttpPost("{id:guid}/embedding/rebuild")]
     public async Task<ActionResult<object>> RebuildEmbedding(Guid id, CancellationToken ct)
     {
-        var memory = await _memoryService.GetByIdAsync(id, ct);
+        var memory = await _memoryService.GetByIdAsync(id, _currentUser.UserId, ct);
         if (memory == null) return NotFound();
 
         if (!_embeddingService.IsSemanticAvailable)
@@ -257,7 +263,7 @@ public class MemoryController : ControllerBase
     {
         try
         {
-            var memory = await _memoryService.UpdateAsync(id, request, ct);
+            var memory = await _memoryService.UpdateAsync(id, request, _currentUser.UserId, ct);
 
             // Rebuild embedding if content changed
             if (request.Content != null && _embeddingService.IsSemanticAvailable)
@@ -291,7 +297,7 @@ public class MemoryController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
-        var deleted = await _memoryService.DeleteAsync(id, ct);
+        var deleted = await _memoryService.DeleteAsync(id, _currentUser.UserId, ct);
         if (!deleted) return NotFound();
 
         // Delete embedding
@@ -318,7 +324,7 @@ public class MemoryController : ControllerBase
     {
         try
         {
-            var replacement = await _memoryService.SupersedeAsync(id, replacementRequest, ct);
+            var replacement = await _memoryService.SupersedeAsync(id, replacementRequest, _currentUser.UserId, ct);
 
             // Generate embedding for replacement
             if (_embeddingService.IsSemanticAvailable)
@@ -363,7 +369,7 @@ public class MemoryController : ControllerBase
     [HttpGet("stats")]
     public async Task<ActionResult<MemoryStatsDto>> GetStats(CancellationToken ct)
     {
-        var stats = await _memoryService.GetStatsAsync(ct);
+        var stats = await _memoryService.GetStatsAsync(_currentUser.UserId, ct);
         return Ok(stats);
     }
 
@@ -423,6 +429,7 @@ public class MemoryController : ControllerBase
 
         var retrievalRequest = new RetrievalRequest
         {
+            OwnerId = _currentUser.UserId,
             UserId = request.UserId,
             ProjectId = request.ProjectId,
             WorkspaceId = request.WorkspaceId,

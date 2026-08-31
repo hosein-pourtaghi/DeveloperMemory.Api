@@ -13,7 +13,7 @@ namespace DeveloperMemory.Application.Services.PromptIntelligence;
 /// - Override instructions
 /// - Call external LLMs
 /// </summary>
-public class DeterministicPromptOptimizer
+public class DeterministicPromptOptimizer : DeveloperMemory.Application.Contracts.IPromptOptimizer
 {
     private readonly ILogger<DeterministicPromptOptimizer> _logger;
 
@@ -25,6 +25,12 @@ public class DeterministicPromptOptimizer
     /// <summary>
     /// Optimizes a prompt for downstream consumption.
     /// </summary>
+    public string Optimize(string prompt)
+    {
+        var result = Optimize(new PromptConstructionResult { ComposedPrompt = prompt });
+        return result.OptimizedPrompt;
+    }
+
     public PromptOptimizationResult Optimize(PromptConstructionResult input)
     {
         var original = input.ComposedPrompt;

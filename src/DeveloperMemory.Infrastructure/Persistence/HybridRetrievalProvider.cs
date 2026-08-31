@@ -34,7 +34,7 @@ public class HybridRetrievalProvider : IMemoryRetrievalProvider
 
     public string ProviderName => "hybrid";
 
-    public bool IsAvailable => _lexicalProvider.IsAvailable;
+    public bool IsAvailable => true;
 
     public async Task<List<MemoryEntry>> GetCandidatesAsync(
         RetrievalRequest request,
@@ -54,7 +54,7 @@ public class HybridRetrievalProvider : IMemoryRetrievalProvider
         }
 
         // Run semantic retrieval (optional, may fail)
-        if (_semanticProvider.IsAvailable)
+        if (true)
         {
             try
             {

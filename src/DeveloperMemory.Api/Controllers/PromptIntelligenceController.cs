@@ -1,6 +1,8 @@
 using DeveloperMemory.Application.Contracts;
+using Microsoft.AspNetCore.Authorization;
 using DeveloperMemory.Application.Services.PromptIntelligence;
 using DeveloperMemory.Domain.Entities;
+using DeveloperMemory.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DeveloperMemory.Api.Controllers;
@@ -11,6 +13,7 @@ namespace DeveloperMemory.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class PromptIntelligenceController : ControllerBase
 {
     private readonly IPromptIntelligenceEngine _intelligenceEngine;
@@ -205,6 +208,10 @@ public class PromptIntelligenceController : ControllerBase
             request.ProjectId,
             request.WorkspaceId,
             request.TokenBudget,
+            null, // profileContext
+            null, // knowledgeContext
+            null, // tags
+            null, // conversationHistory
             ct);
 
         return Ok(new
@@ -231,7 +238,6 @@ public class PromptIntelligenceController : ControllerBase
             }
         });
     }
-}
 
     /// <summary>
     /// Get processing history with optional filters.
@@ -337,7 +343,7 @@ public class PromptIntelligenceController : ControllerBase
         if (profile == null) return NotFound();
 
         // If the provider is a PromptProfileRepository, we can get versions
-        if (profileProvider is Persistence.PromptProfileRepository repo)
+        if (profileProvider is PromptProfileRepository repo)
         {
             var versions = await repo.GetVersionsAsync(profile.Id, ct);
             return Ok(versions.Select(v => new
@@ -420,7 +426,7 @@ public class PromptIntelligenceController : ControllerBase
         IPromptProfileProvider profileProvider,
         CancellationToken ct)
     {
-        if (profileProvider is not Persistence.PromptProfileRepository repo)
+        if (profileProvider is not PromptProfileRepository repo)
         {
             return BadRequest(new { error = new { message = "Profile rollback not supported in current configuration.", code = "unsupported" } });
         }
@@ -488,12 +494,13 @@ public class PromptIntelligenceController : ControllerBase
             e.Details
         }));
     }
+}
 
-    /// <summary>
-    /// Request for prompt analysis.
-    /// </summary>
-    public class PromptAnalyzeRequest
-    {
+/// <summary>
+/// Request for prompt analysis.
+/// </summary>
+public class PromptAnalyzeRequest
+{
     /// <summary>The user input to analyze.</summary>
     public string Input { get; set; } = string.Empty;
 

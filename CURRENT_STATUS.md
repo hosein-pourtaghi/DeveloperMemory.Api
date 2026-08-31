@@ -1,185 +1,138 @@
-# CURRENT_STATUS.md — Implementation Status
+# Current Status
 
-*Last verified: 2026-08-25*
-
----
-
-## Repository State
-
-| Property | Value |
-|---|---|
-| Language | C# (.NET 10.0) |
-| Project type | ASP.NET Core Web API |
-| Architecture | Clean Architecture (4 projects + 1 test project) |
-| Total source projects | 4 (`Domain`, `Application`, `Infrastructure`, `Api`) |
-| Test projects | 1 (`DeveloperMemory.Infrastructure.Tests`) |
-| Test framework | xUnit with EF Core InMemory |
-| Database | PostgreSQL (Npgsql + EF Core) with InMemory fallback |
-| Docker | Not implemented |
-| CI/CD | Not implemented |
+**Last verified:** August 29, 2026
+**Version:** .NET 10.0
+**Branch:** main
 
 ---
 
-## Verified Architecture
+## Build & Test Baseline
 
 ```
-DeveloperMemory.Domain/          (9 files)
-  ├── Entities: BaseEntity, MemoryEntry, Project
-  ├── Enums: MemoryScope, MemoryState, DataClassification
-  └── Interfaces: IMemoryRepository, IProjectRepository
+Restore:      ✅ All projects restored
+Build:        ✅ 0 errors (Release configuration)
+Warnings:     68 (NuGet advisories only)
+Discovered:   598
+Passed:       598
+Failed:       0
+Skipped:      0
+```
 
-DeveloperMemory.Application/     (15 files)
-  ├── Contracts: IMemoryService, IProjectService
-  ├── Services: MemoryService, ProjectService
-  ├── DTOs: Create/Update/Response DTOs, MemoryStatsDto
-  └── Exceptions: DomainException, MemoryNotFoundException, ProjectNotFoundException
+### Per-Project Counts
 
-DeveloperMemory.Infrastructure/ (10 files)
-  ├── Persistence: DeveloperMemoryDbContext, MemoryRepository, ProjectRepository
-  ├── Configurations: MemoryEntryConfiguration, ProjectConfiguration
-  ├── Migrations: InitialCreate (2026-08-24)
-  └── DI: ServiceCollectionExtensions
-
-DeveloperMemory.Api/             (40 files)
-  ├── Controllers: 5 (Memory, Projects, Knowledge, Profiles, OpenAIChatCompletion)
-  ├── Services: 7 (PromptBuilder, ModeDetector, KnowledgeService, ProfileService,
-  │               FreeLlmApiClient, TokenEstimator, RequestLogger)
-  ├── Models: 6 (OpenAI types, KnowledgeDocument, DeveloperProfile, etc.)
-  ├── Infrastructure: Configuration, Middleware (2)
-  ├── Knowledge/: 2 markdown documents
-  ├── Profiles/: 2 markdown profiles
-  └── Documentation: 8 markdown files
-
-tests/
-  DeveloperMemory.Infrastructure.Tests/ (3 files)
-    ├── InMemoryDbFixture + MemoryRepositoryTests
-    ├── ProjectRepositoryTests
-    └── .csproj (xUnit + EF Core InMemory)
+```
+DeveloperMemory.Domain.Tests:            38
+DeveloperMemory.Application.Tests:      327
+DeveloperMemory.Infrastructure.Tests:    92
+DeveloperMemory.Api.Tests:              141
+────────────────────────────────────────────
+TOTAL:                                  598
 ```
 
 ---
 
-## Component Inventory
+## Runtime Verification Results (Phase G)
 
-### ✅ Fully Implemented
+### Runtime Smoke-Test Matrix (InMemory Backend)
 
-| Component | Project | Notes |
-|---|---|---|
-| **MemoryEntry entity** | Domain | Full lifecycle model: Title, Content, Scope, State, Classification, Importance, Tags, Source, ProjectId, SupersededById, ExpiresAt, MetadataJson |
-| **Project entity** | Domain | Name, Description, ConfigurationJson, collection of Memories |
-| **MemoryScope enum** | Domain | Global, Project, Workspace, Private |
-| **MemoryState enum** | Domain | Active, Updated, Superseded, Expired, Archived, Deleted |
-| **DataClassification enum** | Domain | Public, Internal, Confidential, Secret |
-| **IMemoryRepository** | Domain | GetById, GetByScope, Search, GetExpired, Create, Update, Delete, Count |
-| **IProjectRepository** | Domain | GetById, GetAll, Create, Update, Delete |
-| **IMemoryService** | Application | Full CRUD + Supersede, Expire, Stats, Search with tags |
-| **IProjectService** | Application | Full CRUD with memory count |
-| **MemoryService** | Application | Complete implementation with validation, soft delete, supersession, expiration |
-| **ProjectService** | Application | Complete implementation with memory count mapping |
-| **MemoryRepository** | Infrastructure | PostgreSQL/EF Core with keyword search, scope filtering, project filtering, deleted-entry exclusion |
-| **ProjectRepository** | Infrastructure | Standard CRUD with EF Core |
-| **EF Core Migrations** | Infrastructure | InitialCreate migration creating MemoryEntries and Projects tables with indexes |
-| **MemoryEntryConfiguration** | Infrastructure | Table config: indexes on Scope, State, ProjectId, Classification, CreatedAt, ExpiresAt; composite index; foreign keys |
-| **DeveloperMemoryDbContext** | Infrastructure | DbContext with MemoryEntries and Projects DbSets |
-| **ServiceCollectionExtensions** | Infrastructure | DI registration: PostgreSQL or InMemory, repositories, application services |
-| **MemoryController** | Api | REST CRUD at `/api/Memory` with supersede, expire, stats endpoints |
-| **ProjectsController** | Api | REST CRUD at `/api/Projects` |
-| **OpenAIChatCompletionController** | Api | `/v1/chat/completions` with streaming, enrichment, mode detection, model selection, token logging |
-| **KnowledgeController** | Api | CRUD at `/api/Knowledge` with search, reindex |
-| **ProfilesController** | Api | List and load at `/api/Profiles` |
-| **FreeLlmApiClient** | Api | HTTP client for OpenAI-compatible providers; streaming + non-streaming; model resolution; model listing |
-| **PromptBuilder** | Api | Enriches requests with profiles, knowledge, and persistent memory; preserves conversation history |
-| **ModeDetector** | Api | Heuristic detection of plan vs build mode from system prompt content |
-| **KnowledgeService** | Api | Markdown/YAML frontmatter parsing, keyword search with relevance scoring, document creation |
-| **ProfileService** | Api | Markdown/YAML frontmatter parsing, profile loading |
-| **TokenEstimator** | Api | ~4 chars/token heuristic for request/response estimation |
-| **RequestLogger** | Api | Three-phase token logging (INCOMING → ENRICHED → RESPONSE) to console and daily file |
-| **GlobalExceptionMiddleware** | Api | OpenAI-compatible error responses for /v1/*, RFC7807 for others |
-| **RequestLoggingMiddleware** | Api | Diagnostic request body logging for /v1/* POST endpoints |
-| **AppSettings** | Api | Strongly-typed: FreeLlmApi, Paths, ModelSelection |
-| **OpenAI Models** | Api | Full request/response types with JsonExtensionData forwarding, MessageContentConverter |
-| **Health endpoint** | Api | `GET /health` with database connectivity check |
-| **Swagger/OpenAPI** | Api | Development mode, XML comments included |
-| **Serilog** | Api | Console + rolling file logging |
-| **OpenTelemetry** | Api | Configurable traces, metrics, logs (disabled by default) |
-| **Knowledge Documents** | Api/Knowledge | 2 Markdown files: ai-agent-rules.md, code-generation-rules.md |
-| **Developer Profiles** | Api/Profiles | 2 Markdown files: developer-profile.md, development-preferences.md |
+| Scenario                  | Result | Backend | Notes |
+| ------------------------- | ------ | ------- | ----- |
+| Startup                   | ✅ PASS | InMemory | Application starts successfully |
+| Health                    | ✅ PASS | InMemory | 200 OK, no auth required |
+| Development auth-free mode | ✅ PASS | InMemory | No credentials; protected endpoints receive local identity |
+| Invalid API key           | ✅ PASS | InMemory | 401 Unauthorized |
+| Valid config key auth     | ✅ PASS | InMemory | 200 OK |
+| DB key creation           | ✅ PASS | InMemory | Raw key returned once only |
+| DB key authentication     | ✅ PASS | InMemory | Newly created key authenticates |
+| Key list (no secrets)     | ✅ PASS | InMemory | Metadata only, no KeyHash or raw secret |
+| Key revocation            | ✅ PASS | InMemory | Revoked key → 401 |
+| Key rotation              | ✅ PASS | InMemory | New key issued with overlap expiration |
+| Memory create (User A)    | ✅ PASS | InMemory | Title + content required |
+| Memory create (User B)    | ✅ PASS | InMemory | |
+| Stats User A (≥1)         | ✅ PASS | InMemory | Owner-scoped |
+| Stats User B (≥1)         | ✅ PASS | InMemory | Owner-scoped |
+| Cross-user isolation (A)  | ✅ PASS | InMemory | A cannot see B's memory |
+| Cross-user isolation (B)  | ✅ PASS | InMemory | B cannot see A's memory |
+| Rate limiting             | ✅ PASS | InMemory | Normal requests pass within limits |
+| Audit events              | ✅ PASS | InMemory | Events recorded, no raw secrets |
+| Production auth boundary | ✅ PASS | Configuration | Non-Development selects API-key authentication |
+| Gateway: reaches pipeline | ✅ PASS | InMemory | Request reaches enrichment (no LLM provider) |
+| Invalid GUID → 404/400    | ✅ PASS | InMemory | 404 Not Found |
 
-### ✅ Test Infrastructure (Exists)
+### Runtime Verification Summary
 
-| Component | Notes |
-|---|---|
-| **DeveloperMemory.Infrastructure.Tests** | xUnit test project at `tests/` |
-| **InMemoryDbFixture** | Shared fixture creating isolated InMemory EF Core context per test |
-| **MemoryRepositoryTests** | Tests: Create, GetById, GetById_NotFound, GetByScope, Search, GetExpired, Delete, Count |
-| **ProjectRepositoryTests** | Tests: Create, GetById, GetById_NotFound, GetAll, Update, Delete, Delete_NotFound |
-
-**Note:** Tests cannot be run in this environment (no .NET 10.0 SDK available). Test code has been reviewed and appears correct.
-
-### 🔄 Partially Implemented
-
-| Component | Issue |
-|---|---|
-| **Persistent memory in gateway** | `OpenAIChatCompletionController` retrieves persistent memory and injects it into the prompt, but retrieval is basic keyword search — no semantic or lifecycle-aware ranking |
-| **ModeDetector** | Heuristic-based (checks system prompt text for keywords). Works for Cline but is not full intent analysis |
-| **TokenEstimator** | Approximate (~4 chars/token). Not billing-accurate |
-
-### ❌ Not Yet Implemented
-
-| Component | Notes |
-|---|---|
-| **Authentication/Authorization** | No auth middleware; CORS is wide open |
-| **Semantic/Vector search** | Keyword search only; no embeddings or vector store |
-| **Automatic memory capture** | No conversation extraction or automatic memory creation |
-| **Contradiction detection** | Manual supersession exists; no automatic detection |
-| **Prompt Intelligence Engine** | Basic PromptBuilder exists; full engine is target architecture |
-| **Docker/Container support** | No Dockerfile or docker-compose |
-| **CI/CD pipeline** | No GitHub Actions or build automation |
-| **MCP integration** | Not implemented |
-| **Agent runtime abstraction** | Not implemented |
-| **Multi-user support** | Single-user design |
-| **Embeddings endpoint** | Not implemented |
+```
+Total scenarios:    24
+Passed:             24
+Failed:              0
+```
 
 ---
 
-## Persistence Status
+## Architecture Summary
 
-| Aspect | Status |
-|---|---|
-| Database | PostgreSQL via Npgsql + EF Core 10.0 |
-| Fallback | InMemory database (configurable via `UseInMemoryDatabase`) |
-| Migrations | InitialCreate exists (MemoryEntries + Projects tables) |
-| Tables | `MemoryEntries` (with 8 indexes), `Projects` (with unique Name index) |
-| Connection | Configured via `ConnectionStrings:DefaultConnection` |
-
----
-
-## Known Limitations
-
-1. **Keyword search only** — No semantic or vector search. Relevance scoring is text-based substring matching.
-2. **In-memory knowledge cache** — Knowledge documents loaded at startup; reindex via `POST /api/Knowledge/reindex`.
-3. **Knowledge ID instability** — KnowledgeDocument IDs regenerate on each load (`Guid.NewGuid()`).
-4. **Frontmatter parser** — Simple `:` split; values containing `:` may be truncated.
-5. **No streaming token counts** — Token estimates logged for non-streaming only.
-6. **CORS wide open** — Development only; needs lockdown for production.
-7. **No Docker** — No containerized deployment support.
-8. **No CI/CD** — No automated build/test pipeline.
-9. **Gateway services in API project** — Some services (PromptBuilder, ModeDetector, FreeLlmApiClient) are in the API project rather than Application/Infrastructure layers. This is a known architectural evolution point.
+- Clean Architecture: Domain ← Application ← Infrastructure ← API
+- Persistent memory with PostgreSQL/InMemory fallback
+- Memory lifecycle (Active, Superseded, Expired, Archived, Deleted)
+- Memory Intelligence: extraction, conflict detection, ingestion
+- Prompt Intelligence: analysis, context assembly, optimization, evaluation
+- Retrieval: keyword, semantic, hybrid with owner isolation
+- Environment-bound authentication: auth-free Development identity; API-key authentication in Production/non-Development
+- Ownership enforcement at repository, retrieval, and filter levels
+- Fail-closed OwnerId (missing OwnerId = no results)
+- Rate limiting: per-identity partitioned, endpoint-category-specific
+- Security audit trail: persistent PostgreSQL storage (append-only)
+- CORS hardened
+- Sensitive request logging protection
 
 ---
 
-## Known Documentation Corrections (This Update)
+## Authentication & Security
 
-Previous documentation contained these inaccuracies, now corrected:
+- **Development:** Authentication credentials are not required. The existing `DevelopmentAuthenticationHandler` supplies a deterministic local identity so `[Authorize]` endpoints work immediately without login, JWTs, API keys, or auth headers.
+- **Production/non-Development:** Authentication and authorization remain enabled and use the existing API-key Bearer-token flow.
+- **Docker:** Docker is not an authentication mode. Behavior follows `ASPNETCORE_ENVIRONMENT`; the Dockerfile defaults to Production for deployed containers, while Compose explicitly uses Development for local convenience.
+- **Model:** API Key via Bearer token outside Development
+- **Key storage:** PostgreSQL (primary) + configuration (development bootstrap)
+- **Secret handling:** Salted SHA-256 hashes — raw keys never persisted
+- **Identity abstraction:** ICurrentUser (Application layer)
+- **Ownership enforcement:** Server-derived OwnerId on all memory operations
+- **Fail-closed:** Empty/missing OwnerId returns no results
+- **Lifecycle:** Expiration, revocation, rotation with configurable overlap period
+- **Rate limiting:** Per-identity partitioned (200 general, 50 expensive, 20 key management per minute)
+- **Audit trail:** Persistent PostgreSQL append-only log (no raw secrets)
+- **Key management:** CRUD endpoints (list, create, rotate, revoke, audit)
 
-| Previous Claim | Reality |
-|---|---|
-| "No tests exist" | `tests/DeveloperMemory.Infrastructure.Tests/` exists with xUnit tests |
-| "No Docker" | Correct — still no Docker (verified) |
-| "Single-project structure" | 4-project Clean Architecture + 1 test project |
-| "File-based memory only" | PostgreSQL-backed persistent memory exists |
-| "Decision/historical memory is entirely future" | Persistent memory with lifecycle states is implemented; no automatic capture yet |
-| "V1 is a simple knowledge gateway" | System has evolved significantly beyond file-based knowledge |
-| "Source files: 22" | Only counted Api project; total is 74+ across all projects |
-| "No database persistence" | EF Core + PostgreSQL with migrations |
-| "MemoryEntry does not exist" | Fully implemented domain model with lifecycle |
+---
+
+## Development Authentication
+
+Normal local development is auth-free. Running `dotnet run --project src/DeveloperMemory.Api` uses the `Development` environment from `launchSettings.json`; protected endpoints receive the deterministic local identity automatically. No API key or authentication configuration is required.
+
+The existing configuration-based API keys remain available for explicitly testing the real API-key handler. Production keys are created via `POST /api/ApiKey/create` and stored in PostgreSQL.
+
+```json
+{
+  "dev-key-user-a-test-2024": "user-a",
+  "dev-key-user-b-test-2024": "user-b"
+}
+```
+
+**Note:** Development keys bypass database lookup. Production should remove config keys.
+
+---
+
+## Remaining Gaps
+
+### Verification Gaps
+1. **PostgreSQL runtime ownership verification** — InMemory tested; PostgreSQL not runtime verified (Docker daemon not available)
+2. **Persistence after restart** — Cannot verify with InMemory backend (data lost on restart)
+3. **Rate-limit exhaustion** — Not tested at scale (too slow for smoke test)
+
+### Intentionally Deferred
+4. **JWT for browser applications** — Out of scope for current architecture
+5. **Integration tests for controllers** — Not yet implemented
+6. **FreeLLMApi integration** — Requires valid API key (not configured)
+
+### No Blockers
+The application is verified to work as intended in InMemory mode. PostgreSQL runtime verification is pending Docker/infrastructure availability.

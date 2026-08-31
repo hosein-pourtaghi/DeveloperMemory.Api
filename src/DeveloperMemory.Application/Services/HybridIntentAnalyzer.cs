@@ -49,7 +49,7 @@ public class HybridIntentAnalyzer : IIntentAnalyzer
         IntentAnalysisResult? llm = null;
         try
         {
-            if (_llmAnalyzer.IsAvailable)
+            if (LlmIntentAnalyzerExtensions.IsAvailable(_llmAnalyzer))
             {
                 llm = await _llmAnalyzer.AnalyzeAsync(input, context, ct);
             }
@@ -68,7 +68,7 @@ public class HybridIntentAnalyzer : IIntentAnalyzer
 
         _logger.LogDebug(
             "Intent resolved: {Intent} (deterministic={DetIntent}, llm={LlmIntent})",
-            resolved.Intent, deterministic.Intent, llm?.Intent?.ToString() ?? "N/A");
+            resolved.Intent, deterministic.Intent, llm?.Intent.ToString() ?? "N/A");
 
         return resolved;
     }

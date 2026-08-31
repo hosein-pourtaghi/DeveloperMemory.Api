@@ -1,6 +1,7 @@
 using DeveloperMemory.Application.Contracts;
 using DeveloperMemory.Infrastructure.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -12,16 +13,16 @@ namespace DeveloperMemory.Infrastructure.Persistence;
 /// </summary>
 public class PromptHistoryRetentionWorker : BackgroundService
 {
-    private readonly IPromptHistoryRetentionService _retentionService;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptionsMonitor<PromptIntelligenceOptions> _options;
     private readonly ILogger<PromptHistoryRetentionWorker> _logger;
 
     public PromptHistoryRetentionWorker(
-        IPromptHistoryRetentionService retentionService,
+        IServiceScopeFactory scopeFactory,
         IOptionsMonitor<PromptIntelligenceOptions> options,
         ILogger<PromptHistoryRetentionWorker> logger)
     {
-        _retentionService = retentionService;
+        _scopeFactory = scopeFactory;
         _options = options;
         _logger = logger;
     }
@@ -50,13 +51,16 @@ public class PromptHistoryRetentionWorker : BackgroundService
                     "Running history retention cleanup (retention: {RetentionDays} days, interval: {IntervalMinutes} min)",
                     config.MaxHistoryRetentionDays, config.IntervalMinutes);
 
-                var expiredCount = await _retentionService.GetExpiredRecordCountAsync(
+                using var scope = _scopeFactory.CreateScope();
+                var retentionService = scope.ServiceProvider.GetRequiredService<IPromptHistoryRetentionService>();
+
+                var expiredCount = await retentionService.GetExpiredRecordCountAsync(
                     retentionPeriod, stoppingToken);
 
                 if (expiredCount > 0)
                 {
                     var deletedCount = await CleanupInBatchesAsync(
-                        retentionPeriod, config.BatchSize, stoppingToken);
+                        retentionService, retentionPeriod, config.BatchSize, stoppingToken);
 
                     _logger.LogInformation(
                         "History retention completed: {DeletedCount} records cleaned up",
@@ -93,7 +97,8 @@ public class PromptHistoryRetentionWorker : BackgroundService
         _logger.LogInformation("Prompt history retention worker stopped");
     }
 
-    private async Task<int> CleanupInBatchesAsync(
+    private static async Task<int> CleanupInBatchesAsync(
+        IPromptHistoryRetentionService retentionService,
         TimeSpan retentionPeriod,
         int batchSize,
         CancellationToken ct)
@@ -102,7 +107,7 @@ public class PromptHistoryRetentionWorker : BackgroundService
 
         while (!ct.IsCancellationRequested)
         {
-            var deleted = await _retentionService.CleanupExpiredRecordsAsync(retentionPeriod, ct);
+            var deleted = await retentionService.CleanupExpiredRecordsAsync(retentionPeriod, ct);
 
             if (deleted == 0)
                 break;

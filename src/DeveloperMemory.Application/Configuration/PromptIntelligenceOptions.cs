@@ -1,4 +1,4 @@
-namespace DeveloperMemory.Infrastructure.Configuration;
+namespace DeveloperMemory.Application.Configuration;
 
 /// <summary>
 /// Strongly-typed configuration for Prompt Intelligence features.

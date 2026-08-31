@@ -267,11 +267,43 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<ILlmPromptQualityEvaluator>(sp => null!);
         }
 
-        // Experiment service
+        // Phase 13: Experiment Persistence & Observability
+        // Experiment repository — EF Core for production, in-memory fallback for testing
+        if (promptIntelligencePersistence && !useInMemory)
+        {
+            services.AddScoped<IPromptExperimentRepository, PromptExperimentRepository>();
+            services.AddScoped<IExperimentAnalyticsService, ExperimentAnalyticsService>();
+        }
+        else
+        {
+            // In-memory fallback for testing
+            services.AddSingleton<IPromptExperimentRepository, InMemoryPromptExperimentRepository>();
+            services.AddSingleton<IExperimentAnalyticsService, InMemoryExperimentAnalyticsService>();
+        }
+
+        // Statistics analyzer (always deterministic, no infrastructure dependency)
+        services.AddSingleton<IExperimentStatisticsAnalyzer, ExperimentStatisticsAnalyzer>();
+
+        // Experiment service — uses repository abstraction
         services.AddScoped<IExperimentService, ExperimentService>();
 
-        // Metrics
-        services.AddSingleton<IPromptIntelligenceMetrics, InMemoryPromptMetrics>();
+        // Metrics — OpenTelemetry adapter when enabled, in-memory fallback otherwise
+        var metricsEnabled = promptIntelligenceOptions.MetricsEnabled;
+        var enableOpenTelemetry = configuration.GetValue<bool>("PromptIntelligence:Observability:EnableOpenTelemetry", false);
+
+        if (metricsEnabled && enableOpenTelemetry)
+        {
+            services.AddSingleton<InMemoryPromptMetrics>();
+            services.AddSingleton<IPromptIntelligenceMetrics>(sp =>
+            {
+                var fallback = sp.GetRequiredService<InMemoryPromptMetrics>();
+                return new OpenTelemetryPromptMetrics(fallback);
+            });
+        }
+        else
+        {
+            services.AddSingleton<IPromptIntelligenceMetrics, InMemoryPromptMetrics>();
+        }
 
         // Background history retention worker
         if (promptIntelligenceOptions.HistoryRetention.Enabled)

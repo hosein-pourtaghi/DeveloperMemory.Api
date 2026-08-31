@@ -14,9 +14,9 @@ public class ExperimentServiceTests
 
     public ExperimentServiceTests()
     {
-        var profileProvider = new Mock<IPromptProfileProvider>();
+        var experimentRepository = new Mock<IPromptExperimentRepository>();
         _experimentService = new ExperimentService(
-            profileProvider.Object,
+            experimentRepository.Object,
             new Mock<ILogger<ExperimentService>>().Object);
     }
 

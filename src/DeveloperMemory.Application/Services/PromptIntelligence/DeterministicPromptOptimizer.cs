@@ -74,6 +74,7 @@ public class DeterministicPromptOptimizer : DeveloperMemory.Application.Contract
 
     private static string RemoveDuplicateLines(string text)
     {
+        if (text == null) return string.Empty;
         var lines = text.Split('\n');
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var result = new List<string>();
@@ -105,6 +106,15 @@ public class DeterministicPromptOptimizer : DeveloperMemory.Application.Contract
 
     private static string NormalizeWhitespace(string text)
     {
+        // Normalize line endings: CRLF and CR to LF
+        text = text.Replace("\r\n", "\n").Replace("\r", "\n");
+        // Trim trailing whitespace per line
+        var lines = text.Split('\n');
+        for (int i = 0; i < lines.Length; i++)
+        {
+            lines[i] = lines[i].TrimEnd();
+        }
+        text = string.Join('\n', lines);
         // Replace multiple blank lines with double newline
         var result = System.Text.RegularExpressions.Regex.Replace(text, @"\n{3,}", "\n\n");
         return result.Trim();

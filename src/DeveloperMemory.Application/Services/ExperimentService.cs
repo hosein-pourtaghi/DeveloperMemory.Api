@@ -8,127 +8,319 @@ namespace DeveloperMemory.Application.Services;
 
 /// <summary>
 /// Manages prompt experiments: lifecycle, deterministic assignment, and result recording.
+/// Backed by IPromptExperimentRepository for persistence.
 /// </summary>
 public class ExperimentService : IExperimentService
 {
-    private readonly IPromptProfileProvider _profileProvider;
+    private readonly IPromptExperimentRepository _experimentRepository;
+    private readonly IPromptIntelligenceAudit? _audit;
     private readonly ILogger<ExperimentService> _logger;
 
     public ExperimentService(
-        IPromptProfileProvider profileProvider,
-        ILogger<ExperimentService> logger)
+        IPromptExperimentRepository experimentRepository,
+        ILogger<ExperimentService> logger,
+        IPromptIntelligenceAudit? audit = null)
     {
-        _profileProvider = profileProvider;
+        _experimentRepository = experimentRepository;
         _logger = logger;
+        _audit = audit;
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // EXPERIMENT CRUD
+    // ═══════════════════════════════════════════════════════════════
 
     public async Task<PromptExperiment> CreateExperimentAsync(
         PromptExperiment experiment,
         List<PromptExperimentVariant> variants,
         CancellationToken ct = default)
     {
-        experiment.Id = experiment.Id == Guid.Empty ? Guid.NewGuid() : experiment.Id;
-        experiment.CreatedAt = DateTime.UtcNow;
-        experiment.UpdatedAt = DateTime.UtcNow;
-        experiment.Status = ExperimentStatus.Draft;
+        if (string.IsNullOrWhiteSpace(experiment.Name))
+            throw new ArgumentException("Experiment name is required.");
 
+        if (variants.Count < 2)
+            throw new ArgumentException("At least two variants are required for an experiment.");
+
+        // Validate weights sum
+        var totalWeight = variants.Sum(v => v.Weight);
+        if (totalWeight <= 0)
+            throw new ArgumentException("Variant weights must sum to a positive value.");
+
+        // Create experiment
+        var created = await _experimentRepository.CreateExperimentAsync(experiment, ct);
+
+        // Add variants
         foreach (var variant in variants)
         {
-            variant.Id = variant.Id == Guid.Empty ? Guid.NewGuid() : variant.Id;
-            variant.ExperimentId = experiment.Id;
-            variant.CreatedAt = DateTime.UtcNow;
+            variant.ExperimentId = created.Id;
+            await _experimentRepository.AddVariantAsync(variant, ct);
         }
 
+        // Audit
+        await RecordAuditEventAsync("ExperimentCreated",
+            $"Experiment '{created.Name}' created with {variants.Count} variants",
+            created.Id, ct);
+
         _logger.LogInformation(
-            "Experiment created: {Name} ({VariantCount} variants)",
-            experiment.Name, variants.Count);
+            "Experiment created: {Name} ({Id}) with {VariantCount} variants",
+            created.Name, created.Id, variants.Count);
 
-        return await Task.FromResult(experiment);
+        return created;
     }
 
-    public Task<PromptExperiment?> GetExperimentAsync(Guid id, CancellationToken ct = default)
+    public async Task<PromptExperiment?> GetExperimentAsync(Guid id, CancellationToken ct = default)
     {
-        // In production this would query the database
-        return Task.FromResult<PromptExperiment?>(null);
+        return await _experimentRepository.GetByIdAsync(id, ct);
     }
 
-    public Task<IReadOnlyList<PromptExperiment>> GetExperimentsAsync(
+    public async Task<IReadOnlyList<PromptExperiment>> GetExperimentsAsync(
         ExperimentStatus? status = null,
         CancellationToken ct = default)
     {
-        return Task.FromResult<IReadOnlyList<PromptExperiment>>([]);
+        return await _experimentRepository.ListAsync(status, ct);
     }
 
-    public Task<IReadOnlyList<PromptExperimentVariant>> GetVariantsAsync(
+    public async Task<IReadOnlyList<PromptExperimentVariant>> GetVariantsAsync(
         Guid experimentId,
         CancellationToken ct = default)
     {
-        return Task.FromResult<IReadOnlyList<PromptExperimentVariant>>([]);
+        return await _experimentRepository.GetVariantsAsync(experimentId, ct);
     }
 
-    public Task<bool> StartExperimentAsync(Guid experimentId, CancellationToken ct = default)
+    // ═══════════════════════════════════════════════════════════════
+    // LIFECYCLE MANAGEMENT
+    // ═══════════════════════════════════════════════════════════════
+
+    public async Task<bool> StartExperimentAsync(Guid experimentId, CancellationToken ct = default)
     {
+        var experiment = await _experimentRepository.GetByIdAsync(experimentId, ct);
+        if (experiment == null) return false;
+
+        if (experiment.Status != ExperimentStatus.Draft)
+        {
+            _logger.LogWarning(
+                "Cannot start experiment {Id}: current status is {Status} (must be Draft)",
+                experimentId, experiment.Status);
+            return false;
+        }
+
+        // Must have at least one enabled variant
+        var enabledVariants = await _experimentRepository.GetEnabledVariantsAsync(experimentId, ct);
+        if (enabledVariants.Count == 0)
+        {
+            _logger.LogWarning("Cannot start experiment {Id}: no enabled variants", experimentId);
+            return false;
+        }
+
+        experiment.Status = ExperimentStatus.Running;
+        experiment.StartAt = DateTime.UtcNow;
+        await _experimentRepository.UpdateAsync(experiment, ct);
+
+        await RecordAuditEventAsync("ExperimentStarted",
+            $"Experiment '{experiment.Name}' started with {enabledVariants.Count} enabled variants",
+            experimentId, ct);
+
         _logger.LogInformation("Experiment started: {Id}", experimentId);
-        return Task.FromResult(true);
+        return true;
     }
 
-    public Task<bool> PauseExperimentAsync(Guid experimentId, CancellationToken ct = default)
+    public async Task<bool> PauseExperimentAsync(Guid experimentId, CancellationToken ct = default)
     {
+        var experiment = await _experimentRepository.GetByIdAsync(experimentId, ct);
+        if (experiment == null) return false;
+
+        if (experiment.Status != ExperimentStatus.Running)
+        {
+            _logger.LogWarning(
+                "Cannot pause experiment {Id}: current status is {Status} (must be Running)",
+                experimentId, experiment.Status);
+            return false;
+        }
+
+        experiment.Status = ExperimentStatus.Paused;
+        await _experimentRepository.UpdateAsync(experiment, ct);
+
+        await RecordAuditEventAsync("ExperimentPaused",
+            $"Experiment '{experiment.Name}' paused",
+            experimentId, ct);
+
         _logger.LogInformation("Experiment paused: {Id}", experimentId);
-        return Task.FromResult(true);
+        return true;
     }
 
-    public Task<bool> CompleteExperimentAsync(Guid experimentId, CancellationToken ct = default)
+    public async Task<bool> CompleteExperimentAsync(Guid experimentId, CancellationToken ct = default)
     {
+        var experiment = await _experimentRepository.GetByIdAsync(experimentId, ct);
+        if (experiment == null) return false;
+
+        if (experiment.Status != ExperimentStatus.Running &&
+            experiment.Status != ExperimentStatus.Paused)
+        {
+            _logger.LogWarning(
+                "Cannot complete experiment {Id}: current status is {Status} (must be Running or Paused)",
+                experimentId, experiment.Status);
+            return false;
+        }
+
+        experiment.Status = ExperimentStatus.Completed;
+        experiment.EndAt = DateTime.UtcNow;
+        await _experimentRepository.UpdateAsync(experiment, ct);
+
+        await RecordAuditEventAsync("ExperimentCompleted",
+            $"Experiment '{experiment.Name}' completed",
+            experimentId, ct);
+
         _logger.LogInformation("Experiment completed: {Id}", experimentId);
-        return Task.FromResult(true);
+        return true;
     }
 
-    public Task<bool> CancelExperimentAsync(Guid experimentId, CancellationToken ct = default)
+    public async Task<bool> CancelExperimentAsync(Guid experimentId, CancellationToken ct = default)
     {
+        var experiment = await _experimentRepository.GetByIdAsync(experimentId, ct);
+        if (experiment == null) return false;
+
+        if (experiment.Status == ExperimentStatus.Completed ||
+            experiment.Status == ExperimentStatus.Cancelled)
+        {
+            _logger.LogWarning(
+                "Cannot cancel experiment {Id}: current status is {Status} (terminal state)",
+                experimentId, experiment.Status);
+            return false;
+        }
+
+        experiment.Status = ExperimentStatus.Cancelled;
+        experiment.EndAt = DateTime.UtcNow;
+        await _experimentRepository.UpdateAsync(experiment, ct);
+
+        await RecordAuditEventAsync("ExperimentCancelled",
+            $"Experiment '{experiment.Name}' cancelled",
+            experimentId, ct);
+
         _logger.LogInformation("Experiment cancelled: {Id}", experimentId);
-        return Task.FromResult(true);
+        return true;
     }
 
-    public Task<ExperimentAssignmentResult?> AssignAsync(
+    // ═══════════════════════════════════════════════════════════════
+    // DETERMINISTIC ASSIGNMENT
+    // ═══════════════════════════════════════════════════════════════
+
+    public async Task<ExperimentAssignmentResult?> AssignAsync(
         Guid experimentId,
         string stableKey,
         CancellationToken ct = default)
     {
-        // Deterministic hash-based assignment
-        var keyHash = ComputeKeyHash(stableKey);
-        _logger.LogDebug("Assignment computed for key hash: {Hash}", keyHash[..16]);
+        if (string.IsNullOrWhiteSpace(stableKey))
+            throw new ArgumentException("Stable key is required for assignment.");
 
-        // In production, this would load variants and select based on weight
-        // For now return a placeholder
-        return Task.FromResult<ExperimentAssignmentResult?>(null);
+        var experiment = await _experimentRepository.GetByIdAsync(experimentId, ct);
+        if (experiment == null) return null;
+
+        // Only Running experiments can create new assignments
+        if (experiment.Status != ExperimentStatus.Running)
+        {
+            _logger.LogDebug(
+                "Experiment {Id} is not Running (status: {Status}), cannot create new assignments",
+                experimentId, experiment.Status);
+            return null;
+        }
+
+        // Compute hash of stable key
+        var keyHash = ComputeKeyHash(stableKey);
+
+        // Check for existing assignment (reuse for determinism)
+        var existing = await _experimentRepository.GetAssignmentAsync(experimentId, keyHash, ct);
+        if (existing != null)
+        {
+            var existingVariant = (await _experimentRepository.GetVariantsAsync(experimentId, ct))
+                .FirstOrDefault(v => v.Id == existing.VariantId);
+
+            if (existingVariant != null)
+            {
+                _logger.LogDebug(
+                    "Reusing existing assignment for experiment {ExperimentId}, key hash {Hash[..16]}",
+                    experimentId, keyHash[..16]);
+
+                return new ExperimentAssignmentResult
+                {
+                    Variant = existingVariant,
+                    Experiment = experiment,
+                    AssignmentKeyHash = keyHash
+                };
+            }
+        }
+
+        // Get enabled variants for new assignment
+        var enabledVariants = await _experimentRepository.GetEnabledVariantsAsync(experimentId, ct);
+        if (enabledVariants.Count == 0)
+        {
+            _logger.LogWarning("No enabled variants for experiment {Id}", experimentId);
+            return null;
+        }
+
+        // Deterministic weighted selection
+        var selectedVariantId = SelectVariant(enabledVariants, stableKey, experimentId);
+        var selectedVariant = enabledVariants.First(v => v.Id == selectedVariantId);
+
+        // Persist assignment
+        var assignment = new PromptExperimentAssignment
+        {
+            ExperimentId = experimentId,
+            VariantId = selectedVariantId,
+            AssignmentKeyHash = keyHash
+        };
+
+        await _experimentRepository.CreateAssignmentAsync(assignment, ct);
+
+        await RecordAuditEventAsync("ExperimentAssigned",
+            $"Key assigned to variant '{selectedVariant.Name}'",
+            experimentId, ct);
+
+        return new ExperimentAssignmentResult
+        {
+            Variant = selectedVariant,
+            Experiment = experiment,
+            AssignmentKeyHash = keyHash
+        };
     }
 
-    public Task RecordResultAsync(
+    // ═══════════════════════════════════════════════════════════════
+    // RESULT RECORDING
+    // ═══════════════════════════════════════════════════════════════
+
+    public async Task RecordResultAsync(
         PromptExperimentResult result,
         CancellationToken ct = default)
     {
         result.Id = result.Id == Guid.Empty ? Guid.NewGuid() : result.Id;
         result.CreatedAt = DateTime.UtcNow;
 
+        await _experimentRepository.RecordResultAsync(result, ct);
+
         _logger.LogDebug(
             "Experiment result recorded: Experiment={ExperimentId}, Variant={VariantId}, Quality={QualityScore}",
             result.ExperimentId, result.VariantId, result.QualityScore);
-
-        return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyList<PromptExperimentResult>> GetResultsAsync(
+    public async Task<IReadOnlyList<PromptExperimentResult>> GetResultsAsync(
         Guid experimentId,
         Guid? variantId = null,
         CancellationToken ct = default)
     {
-        return Task.FromResult<IReadOnlyList<PromptExperimentResult>>([]);
+        return await _experimentRepository.GetResultsAsync(experimentId, variantId, ct);
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // DETERMINISTIC VARIANT SELECTION
+    // ═══════════════════════════════════════════════════════════════
 
     /// <summary>
     /// Computes a deterministic variant assignment using stable hash.
-    /// Same key → same variant always.
+    /// Algorithm:
+    ///   1. Compute SHA-256(experimentId:stableKey) to get an integer hash.
+    ///   2. Normalize to [0, 1) range.
+    ///   3. Walk enabled variants in order, accumulating weight.
+    ///   4. Select the variant whose cumulative weight range contains the hash.
+    /// Same key + same experiment = same variant, always.
     /// </summary>
     public static Guid SelectVariant(
         IReadOnlyList<PromptExperimentVariant> variants,
@@ -162,8 +354,8 @@ public class ExperimentService : IExperimentService
     }
 
     /// <summary>
-    /// Computes a deterministic hash for stable assignment.
-    /// SHA-256 of (experimentId + stableKey).
+    /// Computes a SHA-256 hash of a stable assignment key.
+    /// Used for deterministic experiment assignment.
     /// </summary>
     public static string ComputeKeyHash(string stableKey)
     {
@@ -176,5 +368,29 @@ public class ExperimentService : IExperimentService
         var input = $"{experimentId}:{stableKey}";
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
         return Math.Abs(BitConverter.ToInt32(bytes, 0));
+    }
+
+    private async Task RecordAuditEventAsync(
+        string eventType, string details, Guid experimentId, CancellationToken ct)
+    {
+        if (_audit == null) return;
+
+        try
+        {
+            var parsedEventType = Enum.TryParse<PromptAuditEventType>(eventType, true, out var parsed)
+                ? parsed
+                : PromptAuditEventType.ProcessingRecordCreated;
+
+            await _audit.RecordEventAsync(new PromptAuditEvent
+            {
+                EventType = parsedEventType,
+                Details = details,
+                CorrelationId = experimentId.ToString()
+            }, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to record audit event {EventType}", eventType);
+        }
     }
 }

@@ -10,7 +10,7 @@ namespace DeveloperMemory.Application.Contracts;
 /// 
 /// The engine does NOT execute requests. It prepares intelligence/context.
 /// 
-/// Pipeline: Request → Analysis → Memory Ingestion → Constraints → Memory Retrieval
+/// Pipeline: Request → Analysis → Memory Ingestion → AgentContext → Memory Retrieval
 ///          → Deduplication → Organization → Composition → Optimization → PromptPackage
 /// </summary>
 public interface IPromptIntelligenceEngine
@@ -19,13 +19,18 @@ public interface IPromptIntelligenceEngine
     /// Processes a raw request through the full intelligence pipeline and produces
     /// a complete PromptPackage ready for downstream consumption.
     ///
+    /// The optional agentContext parameter provides agent identity, task intent,
+    /// and context signals that enrich memory retrieval scope and category filtering.
+    /// When provided, the engine uses it to:
+    ///   - Determine eligible memory scopes via ScopeResolver
+    ///   - Apply agent-type-appropriate category filtering
+    ///   - Enrich the RetrievalRequest with agent-specific context
+    /// When absent, the pipeline operates without agent-specific enrichment.
+    ///
     /// The optional profileContext and knowledgeContext parameters allow the caller
     /// to provide pre-formatted additional context (developer profiles, knowledge
     /// documents) that the engine includes in the composed prompt alongside its
     /// own intelligence-derived context.
-    ///
-    /// The optional tags parameter provides client-supplied tags for memory scope
-    /// inference. When absent, the engine uses available conversational context.
     /// </summary>
     Task<PromptPackage> ProcessAsync(
         string userRequest,
@@ -37,6 +42,7 @@ public interface IPromptIntelligenceEngine
         string? knowledgeContext = null,
         List<string>? tags = null,
         List<string>? conversationHistory = null,
+        AgentContext? agentContext = null,
         CancellationToken ct = default);
 
     /// <summary>

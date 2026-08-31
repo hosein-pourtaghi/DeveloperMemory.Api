@@ -212,6 +212,7 @@ public class PromptIntelligenceController : ControllerBase
             null, // knowledgeContext
             null, // tags
             null, // conversationHistory
+            agentContext: null,
             ct);
 
         return Ok(new

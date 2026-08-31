@@ -15,6 +15,17 @@ public class ExperimentServiceTests
     public ExperimentServiceTests()
     {
         var experimentRepository = new Mock<IPromptExperimentRepository>();
+        // Setup the mock so that CreateExperimentAsync sets the Id like InMemoryPromptExperimentRepository does
+        experimentRepository
+            .Setup(r => r.CreateExperimentAsync(It.IsAny<PromptExperiment>(), It.IsAny<CancellationToken>()))
+            .Returns((PromptExperiment e, CancellationToken _) =>
+            {
+                if (e.Id == Guid.Empty) e.Id = Guid.NewGuid();
+                e.CreatedAt = DateTime.UtcNow;
+                e.UpdatedAt = DateTime.UtcNow;
+                e.Status = ExperimentStatus.Draft;
+                return Task.FromResult(e);
+            });
         _experimentService = new ExperimentService(
             experimentRepository.Object,
             new Mock<ILogger<ExperimentService>>().Object);
@@ -46,12 +57,14 @@ public class ExperimentServiceTests
         var experiment = new PromptExperiment { Name = "Test" };
         var variants = new List<PromptExperimentVariant>
         {
-            new() { Name = "A" }
+            new() { Name = "A", Weight = 0.5 },
+            new() { Name = "B", Weight = 0.5 }
         };
 
         var created = await _experimentService.CreateExperimentAsync(experiment, variants);
 
         Assert.Equal(created.Id, variants[0].ExperimentId);
+        Assert.Equal(created.Id, variants[1].ExperimentId);
     }
 
     [Fact]

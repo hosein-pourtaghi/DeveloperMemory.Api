@@ -85,6 +85,26 @@ public class OpenAIChatCompletionRequest
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? WorkspaceId { get; set; }
 
+    // ── Agent context extensions (Phase W) ──
+
+    /// <summary>
+    /// Agent identifier for context-aware memory retrieval.
+    /// When present, the system resolves agent type and task intent
+    /// to enrich memory scope resolution and category filtering.
+    /// Does NOT bypass privacy/isolation rules.
+    /// </summary>
+    [JsonPropertyName("agent_id")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? AgentId { get; set; }
+
+    /// <summary>
+    /// Optional agent type hint. When absent, inferred from agent_id.
+    /// Values: General, Coding, Documentation, Planning, Testing, DevOps.
+    /// </summary>
+    [JsonPropertyName("agent_type")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? AgentType { get; set; }
+
     /// <summary>
     /// Catch any additional properties from the client that we don't explicitly model.
     /// This allows forwarding unknown fields to the downstream provider without discarding them.

@@ -26,12 +26,14 @@ COPY src/DeveloperMemory.Api/Profiles/ ./Profiles/
 COPY src/DeveloperMemory.Api/Knowledge/ ./Knowledge/
 
 # Environment defaults
-# Do NOT hardcode ASPNETCORE_URLS here — Railway injects PORT and expects
-# the app to bind to it. Set ASPNETCORE_URLS in Railway env vars:
-#   ASPNETCORE_URLS=http://0.0.0.0:$PORT
 ENV ASPNETCORE_ENVIRONMENT=Production
 # Default to in-memory database for local development.
 # Railway MUST override: UseInMemoryDatabase=false
 ENV UseInMemoryDatabase=true
 
-ENTRYPOINT ["dotnet", "DeveloperMemory.Api.dll"]
+# Bind to Railway's runtime PORT when present, falling back to the local
+# development port (5041) otherwise. A shell-form entrypoint is required so
+# $PORT is expanded at container start; Kestrel only listens on 0.0.0.0:5041
+# when no PORT is supplied. Local `dotnet run` development is unaffected
+# (it uses Properties/launchSettings.json).
+ENTRYPOINT ["sh", "-c", "dotnet DeveloperMemory.Api.dll --urls http://0.0.0.0:${PORT:-5041}"]

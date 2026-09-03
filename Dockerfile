@@ -17,20 +17,21 @@ RUN dotnet publish src/DeveloperMemory.Api/DeveloperMemory.Api.csproj -c Release
 # Stage 2: Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
-EXPOSE 5041
 
 # Copy published output
-COPY --from=build /app/publish .
+COPY --from=build /app/publish ./
 
 # Copy profiles and knowledge for runtime
 COPY src/DeveloperMemory.Api/Profiles/ ./Profiles/
 COPY src/DeveloperMemory.Api/Knowledge/ ./Knowledge/
 
 # Environment defaults
-ENV ASPNETCORE_URLS=http://+:5041
+# Do NOT hardcode ASPNETCORE_URLS here — Railway injects PORT and expects
+# the app to bind to it. Set ASPNETCORE_URLS in Railway env vars:
+#   ASPNETCORE_URLS=http://0.0.0.0:$PORT
 ENV ASPNETCORE_ENVIRONMENT=Production
-# Default to in-memory database for easy local/docker development
-# Override with ConnectionStrings__DefaultConnection for PostgreSQL
+# Default to in-memory database for local development.
+# Railway MUST override: UseInMemoryDatabase=false
 ENV UseInMemoryDatabase=true
 
 ENTRYPOINT ["dotnet", "DeveloperMemory.Api.dll"]

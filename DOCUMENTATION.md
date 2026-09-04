@@ -12,7 +12,8 @@
 | [CLAUDE.md](CLAUDE.md) | Complete technical reference |
 | [CURRENT_STATUS.md](CURRENT_STATUS.md) | Verified implementation state (520 tests, 0 failures) |
 | [ROADMAP.md](ROADMAP.md) | Development phases and future direction |
-| [PROJECT_VISION.md](PROJECT_VISION.md) | Canonical vision and target architecture |
+| [PROJECT_VISION.md](PROJECT_VISION.md) | Current project vision, principles, and target architecture |
+| [V2_VISION.md](V2_VISION.md) | Immutable V2 master specification and long-term architecture |
 
 ## Audit & Verification
 

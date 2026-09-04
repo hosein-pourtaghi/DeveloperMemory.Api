@@ -517,7 +517,8 @@ dotnet test tests/DeveloperMemory.Infrastructure.Tests/
 
 ## Related Documentation
 
-- [PROJECT_VISION.md](PROJECT_VISION.md) — Canonical vision, principles, target architecture
+- [PROJECT_VISION.md](PROJECT_VISION.md) — Current project vision, principles, target architecture
+- [V2_VISION.md](V2_VISION.md) — Immutable V2 master specification
 - [CURRENT_STATUS.md](CURRENT_STATUS.md) — Verified implementation inventory
 - [ROADMAP.md](ROADMAP.md) — Development roadmap
 - [AGENTS.md](AGENTS.md) — AI agent coding guide

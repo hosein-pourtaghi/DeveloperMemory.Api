@@ -197,7 +197,8 @@ DeveloperMemory.Api.sln (at repository root)
 
 ## Related Documentation
 
-- [PROJECT_VISION.md](PROJECT_VISION.md) — Canonical vision and target architecture
+- [PROJECT_VISION.md](PROJECT_VISION.md) — Current project vision and target architecture
+- [V2_VISION.md](V2_VISION.md) — Immutable V2 master specification
 - [CURRENT_STATUS.md](CURRENT_STATUS.md) — Verified implementation inventory
 - [CLAUDE.md](CLAUDE.md) — Complete technical reference
 - [KNOWLEDGE_FORMAT.md](KNOWLEDGE_FORMAT.md) — Frontmatter format reference

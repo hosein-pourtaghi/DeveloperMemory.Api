@@ -26,17 +26,20 @@ public class AgentContextController : ControllerBase
 {
     private readonly IAgentContextService _contextService;
     private readonly IAgentContextProvider _contextProvider;
+    private readonly IContextAssemblyService _contextAssemblyService;
     private readonly ICurrentUser _currentUser;
     private readonly ILogger<AgentContextController> _logger;
 
     public AgentContextController(
         IAgentContextService contextService,
         IAgentContextProvider contextProvider,
+        IContextAssemblyService contextAssemblyService,
         ICurrentUser currentUser,
         ILogger<AgentContextController> logger)
     {
         _contextService = contextService;
         _contextProvider = contextProvider;
+        _contextAssemblyService = contextAssemblyService;
         _currentUser = currentUser;
         _logger = logger;
     }
@@ -68,6 +71,41 @@ public class AgentContextController : ControllerBase
             request.ProjectId?.ToString() ?? "(none)");
 
         var result = await _contextService.RetrieveContextAsync(
+            request, _currentUser.UserId, ct);
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Assemble a unified agent context (V2 context foundation).
+    ///
+    /// Combines the runtime request with relevant persistent intelligence
+    /// (retrieved memories + project knowledge) into a single structured
+    /// context that keeps runtime state separate from persistent memory.
+    /// Agent identity is optional — the endpoint is agent-agnostic.
+    ///
+    /// All existing lifecycle, scope, privacy, ranking, and budget behavior
+    /// of the retrieval pipeline applies. No LLM is called and nothing is
+    /// persisted.
+    /// </summary>
+    [HttpPost("assemble")]
+    public async Task<ActionResult<UnifiedAgentContext>> AssembleContext(
+        [FromBody] UnifiedContextRequest request,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Task))
+        {
+            return BadRequest(new { error = new { message = "Task is required.", code = "validation_error" } });
+        }
+
+        _logger.LogInformation(
+            "V2 context assemble: agent={AgentId}, task={Task}, project={ProjectId}, workspace={WorkspaceId}",
+            request.AgentId ?? "(none)",
+            Truncate(request.Task, 50),
+            request.ProjectId?.ToString() ?? "(none)",
+            request.WorkspaceId ?? "(none)");
+
+        var result = await _contextAssemblyService.AssembleAsync(
             request, _currentUser.UserId, ct);
 
         return Ok(result);

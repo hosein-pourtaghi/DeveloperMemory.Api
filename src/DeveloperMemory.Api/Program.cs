@@ -177,6 +177,15 @@ builder.Services.AddSingleton<IModelGateway>(sp => sp.GetRequiredService<FreeLlm
 // To change retrieval strategy (e.g., add vector search), replace this registration.
 builder.Services.AddScoped<IMemoryRetriever, ContextRetrievalService>();
 
+// Register the assistant model port: adapts the Application-level
+// IAssistantModelExecutor over the existing IModelGateway. The assistant
+// orchestrator (Application layer) never sees provider DTOs. To change the
+// model/provider for the assistant, swap the IModelGateway registration above.
+builder.Services.AddScoped<DeveloperMemory.Application.Contracts.IAssistantModelExecutor>(sp =>
+    new AssistantModelGatewayExecutor(
+        sp.GetRequiredService<IModelGateway>(),
+        sp.GetRequiredService<ILogger<AssistantModelGatewayExecutor>>()));
+
 
 
 // ── Authentication (API Key via Bearer token) ──

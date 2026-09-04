@@ -80,6 +80,33 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAgentContextProvider, AgentContextProvider>();
         services.AddScoped<IAgentContextService, AgentContextService>();
 
+        // V2-1: Unified context assembly (runtime + persistent intelligence boundary)
+        services.AddScoped<IContextAssemblyService, ContextAssemblyService>();
+
+        // V2-2: Assistant / Orchestrator core
+        // The model port (IAssistantModelExecutor) is wired in Program.cs to the
+        // existing IModelGateway via an API-layer adapter, keeping the
+        // orchestrator independent of provider DTOs.
+        services.AddScoped<IAssistantOrchestrator, AssistantOrchestrator>();
+
+        // V2-3: Dynamic Agent System — deterministic configuration-based registry
+        var agentRegistryOptions = new DeveloperMemory.Application.Configuration.AgentRegistryOptions();
+        configuration.GetSection(DeveloperMemory.Application.Configuration.AgentRegistryOptions.SectionName).Bind(agentRegistryOptions);
+        services.Configure<DeveloperMemory.Application.Configuration.AgentRegistryOptions>(
+            configuration.GetSection(DeveloperMemory.Application.Configuration.AgentRegistryOptions.SectionName));
+        services.AddSingleton<IAgentResolver, AgentRegistry>();
+
+        // V2-4: Task decomposition & bounded delegation
+        // The decomposer/aggregator are optional capabilities wired into the
+        // existing assistant orchestrator; the model port (IAssistantModelExecutor)
+        // is registered in Program.cs against the existing IModelGateway.
+        var taskDecompositionOptions = new DeveloperMemory.Application.Configuration.TaskDecompositionOptions();
+        configuration.GetSection(DeveloperMemory.Application.Configuration.TaskDecompositionOptions.SectionName).Bind(taskDecompositionOptions);
+        services.Configure<DeveloperMemory.Application.Configuration.TaskDecompositionOptions>(
+            configuration.GetSection(DeveloperMemory.Application.Configuration.TaskDecompositionOptions.SectionName));
+        services.AddScoped<ITaskDecomposer, TaskDecomposer>();
+        services.AddScoped<ITaskResultAggregator, TaskResultAggregator>();
+
         // LLM Intelligence options (shared by Phase L, 8, 10)
         var memoryIntelligenceOptions = new MemoryIntelligenceOptions();
         configuration.GetSection(MemoryIntelligenceOptions.SectionName).Bind(memoryIntelligenceOptions);

@@ -146,6 +146,33 @@ public class DiagnosticLoggingTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => middleware.InvokeAsync(context));
     }
 
+    [Fact]
+    public async Task ExceptionDiagnostics_RedactCredentialLikeValues()
+    {
+        var settings = Options.Create(new DiagnosticsSettings { PersistToDatabase = true });
+        DiagnosticLogEntry? capturedEntry = null;
+
+        _mockRepository.Setup(r => r.TryLogAsync(It.IsAny<DiagnosticLogEntry>(), It.IsAny<CancellationToken>()))
+            .Callback<DiagnosticLogEntry, CancellationToken>((e, _) => capturedEntry = e)
+            .Returns(Task.CompletedTask);
+
+        var middleware = new DiagnosticLoggingMiddleware(
+            _ => throw new InvalidOperationException(
+                "Connection failed; Host=db;Password=test-provider-value; Authorization: Bearer test-bearer-value"),
+            _mockLogger.Object,
+            settings);
+
+        var context = CreateHttpContext("GET", "/test", _mockRepository.Object);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => middleware.InvokeAsync(context));
+
+        Assert.NotNull(capturedEntry);
+        var entryJson = System.Text.Json.JsonSerializer.Serialize(capturedEntry);
+        Assert.DoesNotContain("test-provider-value", entryJson);
+        Assert.DoesNotContain("test-bearer-value", entryJson);
+        Assert.Contains("[REDACTED]", entryJson);
+    }
+
     // ── Persistence failure resilience ──
 
     [Fact]

@@ -262,9 +262,10 @@ public class MemoryContextAssembler : IMemoryContextAssembler
             sections.Add(section);
         }
 
-        // Section 3: Relevant Memory (global + private, task-relevant)
+        // Section 3: Relevant Memory (global + private, task-relevant).
+        // Workspace memories have their own section so they are not emitted twice.
         var relevantMemories = memories
-            .Where(m => m.Scope is MemoryScope.Global or MemoryScope.Private or MemoryScope.Workspace)
+            .Where(m => m.Scope is MemoryScope.Global or MemoryScope.Private)
             .ToList();
         if (relevantMemories.Count > 0)
         {

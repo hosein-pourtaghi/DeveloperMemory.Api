@@ -35,10 +35,12 @@ public class CaptureModelGateway : DeveloperMemory.Api.Abstractions.IModelGatewa
         [new() { Id = "chatcmpl-e2e", Model = "stub-model", Choices = [new() { Index = 0, Message = new() { Role = "assistant", Content = "stub response" }, FinishReason = "stop" }], Usage = new() { PromptTokens = 10, CompletionTokens = 5, TotalTokens = 15 } }];
 
     public int CallCount { get; private set; }
+    public int SendStreamingCallCount { get; private set; }
 
     public void Reset()
     {
         CallCount = 0;
+        SendStreamingCallCount = 0;
         CapturedRequests.Clear();
     }
 
@@ -53,6 +55,7 @@ public class CaptureModelGateway : DeveloperMemory.Api.Abstractions.IModelGatewa
     public Task<Stream> SendStreamingCompletionAsync(OpenAIChatCompletionRequest request, CancellationToken ct = default)
     {
         CallCount++;
+        SendStreamingCallCount++;
         CapturedRequests.Add(request);
         var json = "{\"id\":\"chatcmpl-e2e\",\"object\":\"chat.completion.chunk\",\"model\":\"stub-model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hello\"},\"finish_reason\":null}]}\ndata: [DONE]\n";
         return Task.FromResult<Stream>(new MemoryStream(Encoding.UTF8.GetBytes(json)));

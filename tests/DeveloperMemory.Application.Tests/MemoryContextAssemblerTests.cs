@@ -72,7 +72,7 @@ public class MemoryContextAssemblerTests
     }
 
     [Fact]
-    public void Assemble_GroupsWorkspaceMemoriesIntoWorkspaceSection()
+    public void Assemble_GroupsWorkspaceMemoriesIntoWorkspaceSectionWithoutDuplicatingThem()
     {
         var context = new PromptContext
         {
@@ -93,6 +93,9 @@ public class MemoryContextAssemblerTests
         var result = _assembler.Assemble(context, analysis, []);
 
         Assert.Contains(result.Sections, s => s.SectionId == "workspace_context");
+        Assert.DoesNotContain(result.Sections, s =>
+            s.SectionId == "relevant_memory" &&
+            s.Items.Any(item => item.SourceMemoryId == context.RetrievedMemories[0].MemoryId));
     }
 
     [Fact]

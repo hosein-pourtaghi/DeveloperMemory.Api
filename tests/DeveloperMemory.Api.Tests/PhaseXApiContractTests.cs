@@ -151,6 +151,39 @@ public class PhaseX_ChatCompletionTests : IClassFixture<E2EFactory>
     }
 
     [Fact]
+    public async Task ChatCompletions_StreamingRequest_ProxiesSseResponse()
+    {
+        var request = E2EHelpers.BuildRequest("stub-model", ("user", "Hello"));
+        request.Stream = true;
+
+        var response = await E2EHelpers.SendChatRequest(_client, request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("data: [DONE]", body);
+        Assert.True(_factory.Gateway.SendStreamingCallCount > 0);
+    }
+
+    [Fact]
+    public async Task ChatCompletions_InvalidTemperature_ReturnsStructured400()
+    {
+        var response = await _client.PostAsync("/v1/chat/completions",
+            E2EHelpers.ToJsonContent(new
+            {
+                model = "stub-model",
+                messages = new[] { new { role = "user", content = "Hello" } },
+                temperature = 2.1
+            }));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<OpenAIErrorResponse>();
+        Assert.NotNull(body);
+        Assert.Equal("invalid_request_error", body.Error.Type);
+        Assert.Equal("temperature", body.Error.Param);
+    }
+
+    [Fact]
     public async Task ChatCompletions_ExtensionFieldsPreserved()
     {
         var request = new OpenAIChatCompletionRequest
@@ -597,6 +630,18 @@ public class PhaseX_ErrorContractTests : IClassFixture<E2EFactory>
     }
 
     [Fact]
+    public async Task ChatCompletions_MalformedJson_ReturnsStructured400()
+    {
+        var response = await _client.PostAsync("/v1/chat/completions",
+            new StringContent("{\\\"model\\\":", System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<OpenAIErrorResponse>();
+        Assert.NotNull(body);
+        Assert.Equal("invalid_request_error", body.Error.Type);
+    }
+
+    [Fact]
     public async Task ChatCompletions_MissingMessages_Returns400()
     {
         var response = await _client.PostAsync("/v1/chat/completions",
@@ -607,6 +652,25 @@ public class PhaseX_ErrorContractTests : IClassFixture<E2EFactory>
         var body = await response.Content.ReadFromJsonAsync<OpenAIErrorResponse>();
         Assert.NotNull(body);
         Assert.Equal("invalid_request_error", body.Error.Type);
+    }
+
+    [Fact]
+    public async Task ChatCompletions_InvalidMaxTokenCombination_ReturnsStructured400()
+    {
+        var response = await _client.PostAsync("/v1/chat/completions",
+            E2EHelpers.ToJsonContent(new
+            {
+                model = "stub-model",
+                messages = new[] { new { role = "user", content = "Hello" } },
+                max_tokens = 10,
+                max_completion_tokens = 10
+            }));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<OpenAIErrorResponse>();
+        Assert.NotNull(body);
+        Assert.Equal("invalid_request_error", body.Error.Type);
+        Assert.Equal("max_tokens", body.Error.Param);
     }
 
     [Fact]

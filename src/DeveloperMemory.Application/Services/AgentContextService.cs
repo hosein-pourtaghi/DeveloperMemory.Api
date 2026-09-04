@@ -164,7 +164,7 @@ public class AgentContextService : IAgentContextService
 
         // Group memories by memory type
         var grouped = memories
-            .Where(m => m.State == MemoryState.Active)
+            .Where(m => m.State is MemoryState.Active or MemoryState.Updated)
             .GroupBy(m => m.MemoryType);
 
         foreach (var group in grouped)
@@ -200,7 +200,7 @@ public class AgentContextService : IAgentContextService
 
         foreach (var memory in memories)
         {
-            if (memory.State != MemoryState.Active) continue;
+            if (memory.State is not (MemoryState.Active or MemoryState.Updated)) continue;
 
             if (memory.MemoryType == MemoryType.Instruction ||
                 memory.MemoryType == MemoryType.UserConstraint)

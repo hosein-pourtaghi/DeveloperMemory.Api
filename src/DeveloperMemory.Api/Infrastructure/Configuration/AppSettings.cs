@@ -16,14 +16,19 @@ public class FreeLlmApiSettings
     /// Default model used when auto-selection is disabled or mode is unrecognized.
     /// </summary>
     public string DefaultModel { get; set; } = "auto";
+
+    /// <summary>
+    /// Maximum time allowed for an upstream request, in seconds.
+    /// </summary>
+    public int TimeoutSeconds { get; set; } = 300;
 }
 
 public class ModelSelectionSettings
 {
     /// <summary>
-    /// When true, the gateway ignores the client's requested model and uses
-    /// PlanModel or BuildModel based on detected mode.
-    /// When false, the client's requested model is used as-is.
+    /// When true, the gateway selects PlanModel or BuildModel based on detected mode
+    /// only when the client did not provide a model.
+    /// An explicit client model always takes precedence.
     /// </summary>
     public bool AutoSelectModel { get; set; } = true;
 

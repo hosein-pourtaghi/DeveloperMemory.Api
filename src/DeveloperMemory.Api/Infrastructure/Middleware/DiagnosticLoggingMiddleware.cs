@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using DeveloperMemory.Api.Infrastructure.Configuration;
 using DeveloperMemory.Domain.Entities;
 using DeveloperMemory.Domain.Interfaces;
@@ -81,8 +82,10 @@ public class DiagnosticLoggingMiddleware
             try
             {
                 var entry = BuildLogEntry(context, sw.ElapsedMilliseconds, capturedException);
-                // Fire-and-forget with explicit non-blocking
-                _ = repository.TryLogAsync(entry);
+                // Await persistence before the request scope is disposed. Fire-and-forget
+                // work on a scoped EF Core repository can use a disposed DbContext and
+                // corrupt the PostgreSQL connection while the response is completing.
+                await repository.TryLogAsync(entry, CancellationToken.None);
             }
             catch (Exception ex)
             {
@@ -105,7 +108,7 @@ public class DiagnosticLoggingMiddleware
             Category = "HttpRequest",
             EventType = exception != null ? "Exception" : "Request",
             Message = exception != null
-                ? $"HTTP {request.Method} {request.Path} failed: {exception.Message}"
+                ? Sanitize($"HTTP {request.Method} {request.Path} failed: {exception.Message}") ?? "HTTP request failed"
                 : $"HTTP {request.Method} {request.Path} completed",
             HttpMethod = request.Method,
             RequestPath = request.Path.Value,
@@ -115,10 +118,8 @@ public class DiagnosticLoggingMiddleware
             TraceId = Activity.Current?.TraceId.ToString(),
             Environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
             ExceptionType = exception?.GetType().FullName,
-            ExceptionMessage = exception?.Message,
-            StackTrace = exception?.StackTrace?.Length > 2000
-                ? exception.StackTrace[..2000]
-                : exception?.StackTrace
+            ExceptionMessage = Sanitize(exception?.Message),
+            StackTrace = Sanitize(Truncate(exception?.StackTrace, 2000))
         };
 
         // Safely extract user identity from existing claims
@@ -133,5 +134,24 @@ public class DiagnosticLoggingMiddleware
         }
 
         return entry;
+    }
+
+    private static string? Truncate(string? value, int maxLength)
+    {
+        if (value == null || value.Length <= maxLength)
+            return value;
+
+        return value[..maxLength];
+    }
+
+    private static string? Sanitize(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value;
+
+        var sanitized = value;
+        sanitized = Regex.Replace(sanitized, @"(?i)(password|pwd|apikey|api[_-]?key|access[_-]?token|secret)\s*[=:]\s*[^;\s,]+", "$1=[REDACTED]");
+        sanitized = Regex.Replace(sanitized, @"(?i)Bearer\s+[A-Za-z0-9._~+/-]+=*", "Bearer [REDACTED]");
+        return sanitized;
     }
 }

@@ -20,8 +20,9 @@ public class MemoryConflictDetector : IMemoryConflictDetector
 
         foreach (var existing in existingMemories)
         {
-            // Only compare with active memories
-            if (!existing.IsActive) continue;
+            // Compare only with retrievable lifecycle states and ignore expired entries.
+            if (existing.State is not (MemoryState.Active or MemoryState.Updated) || existing.IsExpired)
+                continue;
 
             // Only compare within the same scope
             if (existing.Scope != newMemory.Scope) continue;

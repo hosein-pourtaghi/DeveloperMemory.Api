@@ -77,10 +77,15 @@ public class OpenAIChatCompletionController : ControllerBase
     [HttpPost("chat/completions")]
     public async Task ChatCompletions([FromBody] OpenAIChatCompletionRequest request, CancellationToken cancellationToken)
     {
-        if (request == null || request.Messages == null || request.Messages.Count == 0)
+        var validationError = ValidateRequest(request);
+        if (validationError != null)
         {
-            await WriteErrorResponse(HttpContext, StatusCodes.Status400BadRequest,
-                "messages must be a non-empty array", "invalid_request_error", "messages");
+            await WriteErrorResponse(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                validationError.Value.Message,
+                "invalid_request_error",
+                validationError.Value.Param);
             return;
         }
 
@@ -108,18 +113,24 @@ public class OpenAIChatCompletionController : ControllerBase
             var mode = ModeDetector.DetectMode(request);
             string selectedModel;
 
-            if (_modelSelection.AutoSelectModel)
+            // An explicit client model always wins. Automatic routing only applies
+            // when the client omitted the model, preserving the configured default-model behavior.
+            if (!string.IsNullOrWhiteSpace(request.Model))
+            {
+                selectedModel = request.Model;
+            }
+            else if (_modelSelection.AutoSelectModel)
             {
                 selectedModel = mode switch
                 {
                     ModeDetector.TaskMode.Plan => _modelSelection.PlanModel,
                     ModeDetector.TaskMode.Build => _modelSelection.BuildModel,
-                    _ => _modelGateway.ResolveModel(request.Model)
+                    _ => _modelGateway.ResolveModel(null)
                 };
             }
             else
             {
-                selectedModel = _modelGateway.ResolveModel(request.Model);
+                selectedModel = _modelGateway.ResolveModel(null);
             }
 
             request.Model = selectedModel;
@@ -132,12 +143,13 @@ public class OpenAIChatCompletionController : ControllerBase
             // Open WebUI sends the full conversation in messages[].
             // Extract all user messages as conversation context for project resolution
             // and memory detection.
-            var conversationHistory = request.Messages
+            var messages = request.Messages!;
+            var conversationHistory = messages
                 .Where(m => m.Role == "user" && !string.IsNullOrWhiteSpace(m.Content))
                 .Select(m => m.Content!)
                 .ToList();
 
-            var lastUserMessage = request.Messages.LastOrDefault(m => m.Role == "user");
+            var lastUserMessage = messages.LastOrDefault(m => m.Role == "user");
             var searchQuery = lastUserMessage?.Content;
 
             var profiles = await _profileService.LoadProfilesAsync();
@@ -255,8 +267,26 @@ public class OpenAIChatCompletionController : ControllerBase
         catch (Abstractions.DownstreamProviderException ex)
         {
             _logger.LogError(ex, "Downstream provider error for chat completion");
-            var (statusCode, errorType) = MapProviderError(ex.StatusCode);
-            await WriteErrorResponse(HttpContext, statusCode, ex.RawErrorContent, errorType);
+            var (statusCode, errorType, message) = MapProviderError(ex.StatusCode);
+            await WriteErrorResponse(HttpContext, statusCode, message, errorType);
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning("Downstream provider request timed out");
+            await WriteErrorResponse(
+                HttpContext,
+                StatusCodes.Status504GatewayTimeout,
+                "The request to the downstream provider timed out",
+                "timeout_error");
+        }
+        catch (TimeoutException)
+        {
+            _logger.LogWarning("Downstream provider request timed out");
+            await WriteErrorResponse(
+                HttpContext,
+                StatusCodes.Status504GatewayTimeout,
+                "The request to the downstream provider timed out",
+                "timeout_error");
         }
         catch (Exception ex)
         {
@@ -348,37 +378,43 @@ public class OpenAIChatCompletionController : ControllerBase
             {
                 var modelList = new OpenAIModelListResponse
                 {
-                    Data = upstreamModels.Select(m => new OpenAIModel
-                    {
-                        Id = m,
-                        Object = "model",
-                        Created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                        OwnedBy = "DeveloperMemory"
-                    }).ToList()
+                    Data = upstreamModels
+                        .Where(model => !string.IsNullOrWhiteSpace(model))
+                        .Distinct(StringComparer.Ordinal)
+                        .Select(model => new OpenAIModel
+                        {
+                            Id = model,
+                            Object = "model",
+                            OwnedBy = "DeveloperMemory"
+                        }).ToList()
                 };
-                return Ok(modelList);
+
+                if (modelList.Data.Count > 0)
+                {
+                    return Ok(modelList);
+                }
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Could not fetch models from upstream provider");
         }
 
-        var defaultModel = _modelGateway.ResolveModel(null);
-        var fallbackList = new OpenAIModelListResponse
-        {
-            Data =
-            [
-                new OpenAIModel
+        return StatusCode(
+            StatusCodes.Status503ServiceUnavailable,
+            new OpenAIErrorResponse
+            {
+                Error = new OpenAIError
                 {
-                    Id = defaultModel,
-                    Object = "model",
-                    Created = 0,
-                    OwnedBy = "DeveloperMemory"
+                    Message = "No models are currently available from the downstream provider.",
+                    Type = "server_error",
+                    Code = "models_unavailable"
                 }
-            ]
-        };
-        return Ok(fallbackList);
+            });
     }
 
     [HttpGet("models/{modelId}")]
@@ -391,6 +427,10 @@ public class OpenAIChatCompletionController : ControllerBase
             {
                 return Ok(model);
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -429,17 +469,65 @@ public class OpenAIChatCompletionController : ControllerBase
         await JsonSerializer.SerializeAsync(context.Response.Body, errorResponse, JsonOptions);
     }
 
-    private static (int statusCode, string errorType) MapProviderError(System.Net.HttpStatusCode providerStatus)
+    private static (int statusCode, string errorType, string message) MapProviderError(System.Net.HttpStatusCode providerStatus)
     {
         return providerStatus switch
         {
-            System.Net.HttpStatusCode.Unauthorized => (StatusCodes.Status401Unauthorized, "authentication_error"),
-            System.Net.HttpStatusCode.Forbidden => (StatusCodes.Status403Forbidden, "permission_error"),
-            System.Net.HttpStatusCode.NotFound => (StatusCodes.Status404NotFound, "invalid_request_error"),
-            System.Net.HttpStatusCode.TooManyRequests => (StatusCodes.Status429TooManyRequests, "rate_limit_error"),
-            System.Net.HttpStatusCode.RequestTimeout => (StatusCodes.Status504GatewayTimeout, "timeout_error"),
-            _ => (StatusCodes.Status502BadGateway, "upstream_error")
+            System.Net.HttpStatusCode.Unauthorized =>
+                (StatusCodes.Status502BadGateway, "upstream_error", "The downstream provider rejected the request."),
+            System.Net.HttpStatusCode.Forbidden =>
+                (StatusCodes.Status502BadGateway, "upstream_error", "The downstream provider rejected the request."),
+            System.Net.HttpStatusCode.NotFound =>
+                (StatusCodes.Status400BadRequest, "invalid_request_error", "The requested model or resource was not found."),
+            System.Net.HttpStatusCode.TooManyRequests =>
+                (StatusCodes.Status429TooManyRequests, "rate_limit_error", "The downstream provider rate limit was exceeded."),
+            System.Net.HttpStatusCode.RequestTimeout =>
+                (StatusCodes.Status504GatewayTimeout, "timeout_error", "The request to the downstream provider timed out."),
+            _ =>
+                (StatusCodes.Status502BadGateway, "upstream_error", "The downstream provider returned an error.")
         };
+    }
+
+    private static (string Message, string Param)? ValidateRequest(OpenAIChatCompletionRequest? request)
+    {
+        if (request?.Messages == null || request.Messages.Count == 0)
+            return ("messages must be a non-empty array", "messages");
+
+        if (request.Messages.Any(message => string.IsNullOrWhiteSpace(message.Role)))
+            return ("each message must include a role", "messages");
+
+        if (request.Messages.Any(message =>
+                string.IsNullOrWhiteSpace(message.Content) &&
+                (message.ToolCalls == null || message.ToolCalls.Count == 0)))
+        {
+            return ("each message must include content or tool_calls", "messages");
+        }
+
+        if (request.Temperature is < 0 or > 2)
+            return ("temperature must be between 0 and 2", "temperature");
+
+        if (request.TopP is < 0 or > 1)
+            return ("top_p must be between 0 and 1", "top_p");
+
+        if (request.N is <= 0)
+            return ("n must be greater than 0", "n");
+
+        if (request.MaxTokens is <= 0)
+            return ("max_tokens must be greater than 0", "max_tokens");
+
+        if (request.MaxCompletionTokens is <= 0)
+            return ("max_completion_tokens must be greater than 0", "max_completion_tokens");
+
+        if (request.MaxTokens.HasValue && request.MaxCompletionTokens.HasValue)
+            return ("max_tokens and max_completion_tokens cannot both be set", "max_tokens");
+
+        if (request.FrequencyPenalty is < -2 or > 2)
+            return ("frequency_penalty must be between -2 and 2", "frequency_penalty");
+
+        if (request.PresencePenalty is < -2 or > 2)
+            return ("presence_penalty must be between -2 and 2", "presence_penalty");
+
+        return null;
     }
 
     // ── Context formatting helpers ──
@@ -519,7 +607,7 @@ public class OpenAIChatCompletionController : ControllerBase
         var enrichedMessages = new List<Message>();
         bool contextInjected = false;
 
-        foreach (var message in request.Messages)
+        foreach (var message in request.Messages!)
         {
             if (message.Role == "system" && !contextInjected)
             {
@@ -578,6 +666,8 @@ public class OpenAIChatCompletionController : ControllerBase
             Tags = request.Tags,
             WorkspaceId = request.WorkspaceId,
             ProfileId = request.ProfileId,
+            AgentId = request.AgentId,
+            AgentType = request.AgentType,
             ExtensionData = request.ExtensionData
         };
     }

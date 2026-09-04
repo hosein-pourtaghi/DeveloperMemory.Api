@@ -51,52 +51,58 @@ public class GlobalExceptionMiddleware
             return;
         }
 
-        context.Response.ContentType = "application/json";
+        if (exception is OperationCanceledException && context.RequestAborted.IsCancellationRequested)
+        {
+            return;
+        }
 
+        context.Response.ContentType = "application/json";
         var isV1Endpoint = context.Request.Path.StartsWithSegments("/v1");
+        var statusCode = exception switch
+        {
+            TimeoutException => (int)HttpStatusCode.GatewayTimeout,
+            TaskCanceledException => (int)HttpStatusCode.GatewayTimeout,
+            HttpRequestException => (int)HttpStatusCode.BadGateway,
+            _ => (int)HttpStatusCode.InternalServerError
+        };
+        var message = exception switch
+        {
+            TimeoutException or TaskCanceledException => "The request to the downstream provider timed out",
+            HttpRequestException => "The downstream provider could not be reached",
+            _ => "An internal server error occurred"
+        };
+        var errorType = exception switch
+        {
+            TimeoutException or TaskCanceledException => "timeout_error",
+            HttpRequestException => "upstream_error",
+            _ => "server_error"
+        };
+
+        context.Response.StatusCode = statusCode;
 
         if (isV1Endpoint)
         {
-            // OpenAI-compatible error response for /v1/* endpoints
-            context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
-
-            var errorResponse = new OpenAIErrorResponse
+            await JsonSerializer.SerializeAsync(context.Response.Body, new OpenAIErrorResponse
             {
                 Error = new OpenAIError
                 {
-                    Message = exception switch
-                    {
-                        InvalidOperationException ex => ex.Message,
-                        TimeoutException => "The request to the downstream provider timed out",
-                        OperationCanceledException => "The request was cancelled",
-                        _ => "An internal server error occurred"
-                    },
-                    Type = exception switch
-                    {
-                        InvalidOperationException => "invalid_request_error",
-                        TimeoutException => "timeout_error",
-                        OperationCanceledException => "request_cancelled",
-                        _ => "server_error"
-                    }
+                    Message = message,
+                    Type = errorType
                 }
-            };
-
-            await JsonSerializer.SerializeAsync(context.Response.Body, errorResponse, JsonOptions);
+            });
+            return;
         }
-        else
+
+        // Non-V1 endpoints also receive a generic response; internal exception details
+        // remain available only through server-side diagnostics.
+        var problem = new
         {
-            // Standard ASP.NET problem details for non-V1 endpoints
-            context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+            type = "https://tools.ietf.org/html/rfc7807",
+            title = "Internal Server Error",
+            status = statusCode,
+            detail = message
+        };
 
-            var problem = new
-            {
-                type = "https://tools.ietf.org/html/rfc7807",
-                title = "Internal Server Error",
-                status = 500,
-                detail = exception.Message
-            };
-
-            await JsonSerializer.SerializeAsync(context.Response.Body, problem, JsonOptions);
-        }
+        await JsonSerializer.SerializeAsync(context.Response.Body, problem);
     }
 }

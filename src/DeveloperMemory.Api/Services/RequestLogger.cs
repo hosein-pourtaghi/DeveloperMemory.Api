@@ -45,8 +45,9 @@ public class RequestLogger
     {
         var entry = new StringBuilder();
         var timestamp = DateTime.UtcNow.ToString("HH:mm:ss.fff");
+        var messages = request.Messages;
 
-        entry.AppendLine($"[{timestamp}] {phase} | model={request.Model ?? "null"} | stream={isStreaming} | messages={request.Messages.Count}");
+        entry.AppendLine($"[{timestamp}] {phase} | model={request.Model ?? "null"} | stream={isStreaming} | messages={messages.Count}");
 
         if (selectedModel != null)
             entry.AppendLine($"  selected_model: {selectedModel}");
@@ -67,15 +68,14 @@ public class RequestLogger
             entry.AppendLine($"  latency_ms: {latencyMs:F0}");
 
         // Log each message's token estimate
-        if (request.Messages.Count > 0)
+        if (messages.Count > 0)
         {
             entry.AppendLine("  messages:");
-            for (int i = 0; i < request.Messages.Count; i++)
+            for (int i = 0; i < messages.Count; i++)
             {
-                var msg = request.Messages[i];
-                var contentPreview = msg.Content?.Length > 100 ? msg.Content[..100] + "..." : msg.Content;
+                var msg = messages[i];
                 var tokens = TokenEstimator.EstimateTokens(msg.Content ?? "");
-                entry.AppendLine($"    [{i}] role={msg.Role} tokens=~{tokens} content={contentPreview}");
+                entry.AppendLine($"    [{i}] role={msg.Role} tokens=~{tokens} content_length={msg.Content?.Length ?? 0}");
             }
         }
 

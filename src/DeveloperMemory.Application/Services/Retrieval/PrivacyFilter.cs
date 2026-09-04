@@ -62,8 +62,9 @@ public static class PrivacyFilter
                     continue;
                 }
 
-                // Match the memory's stored WorkspaceId against the request's WorkspaceId
-                if (!string.IsNullOrEmpty(memory.WorkspaceId) &&
+                // Workspace identity is required for isolation. Legacy rows without an
+                // identifier cannot be safely attributed to the current workspace.
+                if (string.IsNullOrEmpty(memory.WorkspaceId) ||
                     !string.Equals(memory.WorkspaceId, request.WorkspaceId, StringComparison.Ordinal))
                 {
                     continue;
@@ -78,8 +79,9 @@ public static class PrivacyFilter
                     continue;
                 }
 
-                // Match the memory's stored UserId against the request's UserId
-                if (!string.IsNullOrEmpty(memory.UserId) &&
+                // User identity is required for isolation. Legacy rows without an
+                // identifier cannot be safely attributed to the current user.
+                if (string.IsNullOrEmpty(memory.UserId) ||
                     !string.Equals(memory.UserId, request.UserId, StringComparison.Ordinal))
                 {
                     continue;

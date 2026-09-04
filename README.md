@@ -76,6 +76,7 @@ Response back to AI Application
 - ✅ EF Core migrations
 - ✅ 3 test projects with 51 test methods (xUnit + EF Core InMemory)
 - ✅ Health check endpoint
+- ✅ Configuration-controlled API-key authentication with an explicit Development bypass
 - ✅ OpenTelemetry integration (configurable)
 - ✅ Swagger/OpenAPI documentation
 - ✅ Serilog structured logging
@@ -83,7 +84,6 @@ Response back to AI Application
 - ✅ PostgreSQL with pgvector extension (for future vector search)
 
 ### Not Yet Implemented
-- Authentication and authorization (enabled for Production; Development uses an auth-free local identity)
 - Semantic/vector search (embeddings — pgvector available but not integrated)
 - Automatic memory capture from conversations
 - CI/CD pipeline
@@ -184,7 +184,8 @@ dotnet test tests/DeveloperMemory.Infrastructure.Tests/
     "FreeLlmApi": {
       "BaseUrl": "http://localhost:3001/v1",
       "ApiKey": "",
-      "DefaultModel": "auto"
+      "DefaultModel": "auto",
+      "TimeoutSeconds": 300
     },
     "ModelSelection": {
       "AutoSelectModel": true,
@@ -228,6 +229,12 @@ Environment variables: `AppSettings__FreeLlmApi__BaseUrl`, `AppSettings__FreeLlm
 | `POST` | `/v1/chat/completions` | Enriched chat completion |
 | `GET` | `/v1/models` | List models |
 | `GET` | `/v1/models/{modelId}` | Get model details |
+
+The gateway accepts standard OpenAI chat fields that the configured provider can forward: `model`, `messages`, `temperature`, `top_p`, `n`, `stream`, `stop`, `max_tokens`, `max_completion_tokens`, `frequency_penalty`, `presence_penalty`, `user`, `seed`, `tools`, `tool_choice`, `logit_bias`, and `stream_options`. DeveloperMemory extensions such as `project`, `workspace_id`, `tags`, `profile_id`, `agent_id`, and `agent_type` are used for context enrichment and are preserved when forwarding.
+
+`/v1/models` reflects the upstream provider catalog and returns `503` when no upstream models are available; it does not fabricate a default model. `/v1/chat/completions` returns OpenAI-shaped JSON errors for invalid requests, unavailable providers, upstream failures, and timeouts. Streaming requests are proxied as `text/event-stream` SSE; the gateway does not synthesize streaming from a completed response.
+
+In Development, authentication bypass is enabled only when `Authentication:DevelopmentBypass` is explicitly true. Production and other environments require a configured API key. Set the provider credential through `AppSettings__FreeLlmApi__ApiKey` or another external secret source rather than committing it to `appsettings.json`.
 
 ### Legacy Knowledge & Profiles (`/api`)
 | Method | Path | Description |

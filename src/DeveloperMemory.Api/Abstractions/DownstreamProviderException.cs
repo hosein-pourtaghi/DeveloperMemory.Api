@@ -20,7 +20,7 @@ public class DownstreamProviderException : Exception
     public string RawErrorContent { get; }
 
     public DownstreamProviderException(HttpStatusCode statusCode, string rawErrorContent)
-        : base($"Downstream provider returned {(int)statusCode} ({statusCode}): {rawErrorContent}")
+        : base($"Downstream provider returned {(int)statusCode} ({statusCode}).")
     {
         StatusCode = statusCode;
         RawErrorContent = rawErrorContent;

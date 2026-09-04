@@ -8,6 +8,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -37,8 +38,11 @@ public class FreeLlmApiClient : IModelGateway
         _appSettings = appSettings.Value;
         _logger = logger;
 
-        // Configure base address and timeout
-        _httpClient.Timeout = TimeSpan.FromMinutes(5); // Generous timeout for large completions
+        // Keep the timeout configurable while retaining a safe default for long completions.
+        _httpClient.Timeout = TimeSpan.FromSeconds(
+            _appSettings.FreeLlmApi.TimeoutSeconds > 0
+                ? _appSettings.FreeLlmApi.TimeoutSeconds
+                : 300);
 
         if (!string.IsNullOrEmpty(_appSettings.FreeLlmApi.ApiKey))
         {
@@ -100,17 +104,17 @@ public class FreeLlmApiClient : IModelGateway
 
         _logger.LogInformation(
             "Sending non-streaming request to provider: url={Url}, model={Model}, messages={MessageCount}",
-            endpointUrl, request.Model, request.Messages.Count);
+            endpointUrl, request.Model, request.Messages?.Count ?? 0);
 
         var requestBody = JsonSerializer.Serialize(request, JsonOptions);
         var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
 
-        var response = await _httpClient.PostAsync(endpointUrl, content, cancellationToken);
+        using var response = await _httpClient.PostAsync(endpointUrl, content, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
             var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogError("Provider returned error: {StatusCode} - {Error}", response.StatusCode, errorContent);
+            _logger.LogError("Provider returned error: {StatusCode}", response.StatusCode);
             throw new DownstreamProviderException(response.StatusCode, errorContent);
         }
 
@@ -123,8 +127,7 @@ public class FreeLlmApiClient : IModelGateway
         }
         catch (JsonException ex)
         {
-            _logger.LogError(ex, "Failed to deserialize provider response. Raw: {Response}",
-                responseContent.Length > 500 ? responseContent[..500] : responseContent);
+            _logger.LogError(ex, "Failed to deserialize provider response from {Endpoint}", endpointUrl);
             throw;
         }
     }
@@ -151,7 +154,7 @@ public class FreeLlmApiClient : IModelGateway
             endpointUrl, request.Model, request.Messages.Count);
 
         var requestBody = JsonSerializer.Serialize(request, JsonOptions);
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, endpointUrl)
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, endpointUrl)
         {
             Content = new StringContent(requestBody, Encoding.UTF8, "application/json")
         };
@@ -162,7 +165,7 @@ public class FreeLlmApiClient : IModelGateway
         if (!response.IsSuccessStatusCode)
         {
             var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogError("Provider returned streaming error: {StatusCode} - {Error}", response.StatusCode, errorContent);
+            _logger.LogError("Provider returned streaming error: {StatusCode}", response.StatusCode);
             response.Dispose();
             throw new DownstreamProviderException(response.StatusCode, errorContent);
         }
@@ -187,7 +190,7 @@ public class FreeLlmApiClient : IModelGateway
         try
         {
             var modelsUrl = BuildEndpointUrl("/models");
-            var response = await _httpClient.GetAsync(modelsUrl, cancellationToken);
+            using var response = await _httpClient.GetAsync(modelsUrl, cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -208,6 +211,10 @@ public class FreeLlmApiClient : IModelGateway
                 return [];
             }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error fetching models from upstream provider");
@@ -226,7 +233,7 @@ public class FreeLlmApiClient : IModelGateway
         try
         {
             var modelsUrl = BuildEndpointUrl($"/models/{modelId}");
-            var response = await _httpClient.GetAsync(modelsUrl, cancellationToken);
+            using var response = await _httpClient.GetAsync(modelsUrl, cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -235,6 +242,10 @@ public class FreeLlmApiClient : IModelGateway
 
             var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
             return JsonSerializer.Deserialize<OpenAIModel>(responseContent, JsonOptions);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {

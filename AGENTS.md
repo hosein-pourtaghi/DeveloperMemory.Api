@@ -171,7 +171,7 @@ DeveloperMemory.Api.sln (at repository root)
 
 1. **Two memory systems coexist:** The legacy `KnowledgeService` (file-based Markdown) and the persistent `MemoryService` (PostgreSQL). Both are orchestrated behind `IMemoryRetriever` by `ContextRetrievalService`. Do not remove either without understanding the impact.
 
-2. **Tests exist across 5 projects:** `tests/DeveloperMemory.Domain.Tests/` (10 methods), `tests/DeveloperMemory.Application.Tests/` (16 methods), `tests/DeveloperMemory.Infrastructure.Tests/` (23 methods), `tests/DeveloperMemory.Api.Tests/` (81 methods), `tests/DeveloperMemory.Tests/` (consolidated, 419 methods). Total: ~549 test methods. No integration tests for controllers or services yet.
+2. **Tests exist across 4 projects:** `tests/DeveloperMemory.Domain.Tests/` (38), `tests/DeveloperMemory.Application.Tests/` (597), `tests/DeveloperMemory.Infrastructure.Tests/` (150), `tests/DeveloperMemory.Api.Tests/` (267). Total: 1,052 test methods (verified 2026-09-11; see `CURRENT_STATUS.md`). There is no consolidated `DeveloperMemory.Tests` project, and controller integration tests DO exist (`PostgresE2EFactory` boots the real app via `WebApplicationFactory` against real PostgreSQL). PostgreSQL-backed tests require a local PostgreSQL with role `developer`/`devpassword` and databases `developermemory` and `developermemory_test` — they fail fast with connection errors rather than falling back to InMemory.
 
 3. **Token estimates are approximate:** ~4 chars/token heuristic. For billing-accurate counts, check `provider_tokens` in the response.
 

@@ -48,6 +48,7 @@ public sealed class PostgresDbFixture : IDisposable
             .UseNpgsql(ConnectionString, npgsql =>
             {
                 npgsql.MigrationsAssembly(typeof(DeveloperMemoryDbContext).Assembly.FullName);
+                npgsql.UseVector();
             })
             .Options;
 

@@ -29,7 +29,33 @@ public class DeveloperMemoryDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+        // pgvector support is PostgreSQL-specific and is applied only on the
+        // Npgsql provider. The EF InMemory provider (used by tests) cannot map
+        // the Pgvector.Vector provider type produced by the VectorEntry value
+        // converter, so the model is shaped per provider.
+        if (Database.IsNpgsql())
+        {
+            // pgvector extension is required for the VectorEntries.Vector column.
+            // Declaring it here makes the requirement explicit in the EF model and
+            // emitted migrations (CREATE EXTENSION IF NOT EXISTS vector).
+            modelBuilder.HasPostgresExtension("vector");
+        }
+
         // Apply all configurations from the current assembly
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(DeveloperMemoryDbContext).Assembly);
+
+        if (!Database.IsNpgsql())
+        {
+            // VectorEntryConfiguration maps Vector as a pgvector column via a
+            // float[] → Pgvector.Vector value converter. Other providers (the
+            // InMemory provider) have no mapping for that provider type and would
+            // fail model validation, so the property is excluded from their model.
+            // Vector data always flows through IVectorStore implementations
+            // (InMemoryVectorStore in tests), never through provider-generic LINQ,
+            // so excluding the column from non-PostgreSQL models has no functional
+            // impact. Design-time and migrations are Npgsql-only, so snapshots and
+            // emitted migrations are unaffected.
+            modelBuilder.Entity<VectorEntry>().Ignore(e => e.Vector);
+        }
     }
 }

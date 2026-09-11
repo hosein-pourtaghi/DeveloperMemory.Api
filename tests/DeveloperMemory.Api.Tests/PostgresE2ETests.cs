@@ -60,6 +60,7 @@ public class PostgresE2EFactory : WebApplicationFactory<Program>, IAsyncLifetime
                 options.UseNpgsql(_connectionString, npgsql =>
                 {
                     npgsql.MigrationsAssembly(typeof(DeveloperMemoryDbContext).Assembly.FullName);
+                    npgsql.UseVector();
                 }));
         });
     }

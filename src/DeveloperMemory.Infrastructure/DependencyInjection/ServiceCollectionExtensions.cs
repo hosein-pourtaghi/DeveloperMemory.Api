@@ -4,6 +4,7 @@ using DeveloperMemory.Application.Services.PromptIntelligence;
 using DeveloperMemory.Application.Services.Retrieval;
 using DeveloperMemory.Domain.Interfaces;
 using DeveloperMemory.Domain.Configuration;
+using DeveloperMemory.Domain.Enums;
 using DeveloperMemory.Infrastructure.Configuration;
 using DeveloperMemory.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -38,6 +39,8 @@ public static class ServiceCollectionExtensions
                 options.UseNpgsql(connectionString, npgsql =>
                 {
                     npgsql.MigrationsAssembly(typeof(DeveloperMemoryDbContext).Assembly.FullName);
+                    // Register the pgvector type mapping (vector columns + <=> operator support).
+                    npgsql.UseVector();
                 }));
         }
 
@@ -53,7 +56,27 @@ public static class ServiceCollectionExtensions
 
         // Phase 3: Retrieval pipeline
         services.AddScoped<KeywordRetrievalProvider>();
-        services.AddScoped<IMemoryRetrievalProvider>(sp => sp.GetRequiredService<KeywordRetrievalProvider>());
+        services.AddScoped<SemanticRetrievalProvider>();
+        services.AddScoped<HybridRetrievalProvider>();
+
+        // Retrieval-mode selection (configuration-driven; default Keyword preserves
+        // existing behavior — semantic/hybrid consume embedding/vector resources and
+        // are only bound when explicitly selected).
+        // Auto is treated as Hybrid: HybridRetrievalProvider already implements the
+        // documented Auto behavior (use semantic when available, lexical fallback).
+        services.Configure<RetrievalOptions>(configuration.GetSection(RetrievalOptions.SectionName));
+        services.AddScoped<IMemoryRetrievalProvider>(sp =>
+        {
+            var mode = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<RetrievalOptions>>()
+                .Value.ResolvedMode;
+
+            return mode switch
+            {
+                RetrievalMode.Semantic => sp.GetRequiredService<SemanticRetrievalProvider>(),
+                RetrievalMode.Hybrid or RetrievalMode.Auto => sp.GetRequiredService<HybridRetrievalProvider>(),
+                _ => sp.GetRequiredService<KeywordRetrievalProvider>()
+            };
+        });
         services.AddScoped<IRetrievalRanker, RelevanceRanker>();
         services.AddScoped<IContextBudgeter, CharacterContextBudgeter>();
         services.AddScoped<IMemoryRetrievalService, MemoryRetrievalService>();
@@ -171,9 +194,10 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<IEmbeddingCache, InMemoryEmbeddingCache>();
         }
 
-        // Semantic retrieval provider
-        services.AddScoped<SemanticRetrievalProvider>();
-        services.AddScoped<HybridRetrievalProvider>();
+        // Semantic retrieval providers are registered in the Phase 3 retrieval
+        // pipeline block above (retrieval-mode selection needs them regardless of
+        // embedding configuration — SemanticRetrievalProvider itself degrades
+        // gracefully when embeddings are disabled/unavailable).
 
         // Memory policy engine
         services.AddScoped<IMemoryPolicy, MemoryPolicyEngine>();

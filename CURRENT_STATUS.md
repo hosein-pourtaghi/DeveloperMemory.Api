@@ -1,33 +1,76 @@
 # Current Status
 
-**Last verified:** August 29, 2026
+**Last verified:** September 11, 2026 (full build + test execution against real PostgreSQL with pgvector)
 **Version:** .NET 10.0
-**Branch:** main
+**Branch:** master
 
 ---
 
-## Build & Test Baseline
+## Build & Test Baseline (executed, not inferred)
 
 ```
 Restore:      ✅ All projects restored
-Build:        ✅ 0 errors (Release configuration)
-Warnings:     68 (NuGet advisories only)
-Discovered:   598
-Passed:       598
-Failed:       0
-Skipped:      0
+Build:        ✅ 0 errors (Debug configuration)
+Warnings:     683 (NuGet advisories, xUnit1031 blocking-task analyzer
+                    warnings in tests, pre-existing CS8602/CS0168)
+Discovered:   1,052
+Passed:       1,052
+Failed:          0
+Skipped:         0
 ```
 
-### Per-Project Counts
+### Per-Project Counts (actual)
 
 ```
 DeveloperMemory.Domain.Tests:            38
-DeveloperMemory.Application.Tests:      327
-DeveloperMemory.Infrastructure.Tests:    92
-DeveloperMemory.Api.Tests:              141
+DeveloperMemory.Application.Tests:      597
+DeveloperMemory.Infrastructure.Tests:   150
+DeveloperMemory.Api.Tests:              267
 ────────────────────────────────────────────
-TOTAL:                                  598
+TOTAL:                                  1,052
 ```
+
+### pgvector semantic retrieval verification (2026-09-11)
+
+PostgreSQL semantic/hybrid retrieval is verified operational against real
+PostgreSQL + pgvector (local PostgreSQL 14 with pgvector 0.8.0):
+
+- The `20260909164235_EnablePgvectorSemanticRetrieval` migration applies cleanly
+  to a fresh database: it creates the `vector` extension and converts
+  `VectorEntries.Vector` from `real[]` to pgvector `vector` (data-preserving
+  conversion through the bracketed text form; the Down path reverses it).
+- `PostgresSemanticVectorStoreTests` (5 tests) verify: the column is a real
+  pgvector `vector` type, vector upsert/search ranking via the `<=>` operator,
+  upsert replace semantics, get/delete round-trip, and the full
+  `SemanticRetrievalProvider` pipeline with owner isolation against real vectors.
+
+Note: There is no consolidated `DeveloperMemory.Tests` project. The solution
+contains exactly 4 test projects. Historical documents referencing a 5-project
+test layout or a 419-method consolidated project are stale.
+
+### PostgreSQL runtime verification (previously pending — now executed)
+
+The Phase G "PostgreSQL runtime verification pending" gap is closed. A local
+PostgreSQL 14 server was used (no Docker), matching the tests' expected
+conventions (`developer`/`devpassword`):
+
+- Both migrations (`20260828103251_InitialCreate`,
+  `20260830083234_AddDiagnosticLogs`) apply cleanly to a fresh database.
+- Migrated schema contains all 14 expected tables including `DiagnosticLogs`
+  and `SecurityAuditLog` (the Phase W "missing DiagnosticLogs table" note was
+  stale — the table is created by the `AddDiagnosticLogs` migration).
+- `PostgresE2EFactory` boots the real `Program.cs` via `WebApplicationFactory`
+  against a unique real PostgreSQL database per test class and exercises the
+  full HTTP stack (auth → controller → engine → repository → PostgreSQL).
+  All 267 Api tests pass, including the Postgres-backed E2E classes
+  (`Postgres_ConversationalMemoryTests`, `Postgres_DiagnosticLoggingTests`,
+  `Postgres_AgentMemoryApiTests`).
+- `PostgresDbFixture` (Infrastructure) verifies persistence across DbContext
+  recreation: memory CRUD/lifecycle, API-key lifecycle, append-only audit,
+  and retrieval owner isolation — all 112 tests pass.
+- Test databases: `developermemory_test` (Infrastructure fixture,
+  reset per test class) and uniquely named `e2e_*` databases (Api factory,
+  created/dropped per fixture).
 
 ---
 
@@ -125,14 +168,46 @@ The existing configuration-based API keys remain available for explicitly testin
 ## Remaining Gaps
 
 ### Verification Gaps
-1. **PostgreSQL runtime ownership verification** — InMemory tested; PostgreSQL not runtime verified (Docker daemon not available)
-2. **Persistence after restart** — Cannot verify with InMemory backend (data lost on restart)
-3. **Rate-limit exhaustion** — Not tested at scale (too slow for smoke test)
+1. **Rate-limit exhaustion** — Not tested at scale (too slow for smoke test)
+2. **FreeLLMApi live forwarding** — Gateway chain verified in a prior Railway
+   deployment; local verification requires a configured upstream API key
 
 ### Intentionally Deferred
-4. **JWT for browser applications** — Out of scope for current architecture
-5. **Integration tests for controllers** — Not yet implemented
-6. **FreeLLMApi integration** — Requires valid API key (not configured)
+3. **JWT for browser applications** — Out of scope for current architecture
+
+### Closed Gaps (previously listed as pending)
+- ~~PostgreSQL runtime ownership verification~~ — Executed with real PostgreSQL
+  (see baseline above; all Postgres-backed suites pass).
+- ~~Persistence after restart~~ — Verified by the Infrastructure
+  `Postgres*_PersistenceTests` suites, which write through one `DbContext`, dispose
+  it, and read back through a fresh one against real PostgreSQL.
+- ~~Integration tests for controllers~~ — Implemented: `PostgresE2EFactory`
+  boots the real app via `WebApplicationFactory` and exercises controllers over
+  HTTP; `PhaseWIntegrationTests` and `PhaseXApiContractTests` cover gateway and
+  contract behavior.
 
 ### No Blockers
-The application is verified to work as intended in InMemory mode. PostgreSQL runtime verification is pending Docker/infrastructure availability.
+The application is verified to work as intended against both InMemory and real
+PostgreSQL backends.
+
+---
+
+## Known Non-Features (source-verified, for agent accuracy)
+
+The following have been **claimed in some historical conversations** but do NOT
+exist in source code. Do not document or rely on them:
+
+- **Assistant/Orchestrator Core ("V2-2")** — No such component exists. The
+  closest implemented equivalent is `IContextOrchestrator`/`ContextOrchestrator`
+  (Phase 9) and `PromptIntelligenceEngine` (Phase 4).
+- **Dynamic Agent System ("V2-3")** — No dynamic agent registry/runtime exists.
+  What exists is the static **AgentContext subsystem** (Phase T):
+  `IAgentContextProvider`/`AgentContextProvider` (resolves agent type, task
+  intent, confidence from request hints) and `IAgentContextService`/
+  `AgentContextService` (agent-aware retrieval over the Phase-S pipeline),
+  exposed via `AgentContextController` and `AgentMemoryController`, and wired
+  into the OpenAI-compatible gateway (`OpenAIChatCompletionController` resolves
+  an `AgentContext` when the request carries agent fields).
+- **"V2-4"** — No phase with this identifier is defined anywhere in the
+  repository (docs, code, or tests). Any claims about its completion are
+  unverifiable by construction.

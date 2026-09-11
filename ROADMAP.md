@@ -1,6 +1,6 @@
 # Development Roadmap
 
-**Last updated:** 2026-08-27 (Phase G complete)
+**Last updated:** 2026-09-09 (V2 phase record added; PostgreSQL runtime verification executed)
 
 ---
 
@@ -52,6 +52,51 @@
 
 ---
 
+## Post-V1 Phases (implemented in source; verified 2026-09-09)
+
+These phases were implemented after Phase G and live in the squashed history
+commit `f964aca`. Their reports are in `Phase-S-Report.md`, `Phase-T-Report.md`,
+`Phase-U-Report.md`, and `PHASE_W_REPORT.md`:
+
+### Phase R — Workspace/Project Context ✅
+- `MemoryScope.Workspace` + `WorkspaceId` on `MemoryEntry`; scope-resolved retrieval
+- Verified end-to-end by `tests/PhaseU_E2E_Verification.sh`
+
+### Phase S — Semantic/Relevance Ranking Pipeline ✅
+- `MemoryRetrievalService` pipeline: `KeywordRetrievalProvider` →
+  `PrivacyFilter` → `LifecycleFilter` → `RelevanceRanker` → `CharacterContextBudgeter`
+- Owner-isolated retrieval providers (`IRetrievalRanker`, `IContextBudgeter`)
+
+### Phase T — Agent Context Intelligence ✅ (this is the "AgentContext" work)
+- `IAgentContextProvider`/`AgentContextProvider`: resolves `AgentContext`
+  (agent id/type, `TaskIntent`, confidence, project/workspace hints) from request fields
+- `IAgentContextService`/`AgentContextService`: agent-aware retrieval that enriches
+  the Phase-S `RetrievalRequest` (never bypasses the existing pipeline)
+- `AgentContextController` (`/api/AgentContext`) and `AgentMemoryController`
+- Registered in `ServiceCollectionExtensions` ("Phase T" section)
+
+### Phase U — Real PostgreSQL + Kestrel E2E Verification ✅
+- `tests/PhaseU_E2E_Verification.sh` — real HTTP + real PostgreSQL verification script
+
+### Phase W — AgentContext integrated into the OpenAI-compatible gateway ✅
+- `OpenAIChatCompletionController` resolves an `AgentContext` (when the request
+  carries `agent_id`/agent fields) and passes it to `IPromptIntelligenceEngine.ProcessAsync`
+- `OpenAIRequestResponse` carries the agent fields; `AgentContextController` scope
+  validation returns BadRequest for empty agent ids
+- Isolation verified: workspace-A memories are not returned for workspace-B requests;
+  private memories are not returned cross-user
+- See `PHASE_W_REPORT.md` for the integration flow
+
+### Phase X — API contract coverage ✅
+- `PhaseXApiContractTests` (24 facts) covering gateway contract stability
+
+**Note on "V2-2 / V2-3 / V2-4" labels:** No phase with these identifiers exists in
+this repository. In particular there is no "Assistant/Orchestrator Core" and no
+"Dynamic Agent System" in source; the implemented architecture is exactly the
+Phase T/W AgentContext subsystem described above.
+
+---
+
 ## Test Baseline History
 
 ```
@@ -61,8 +106,10 @@ Phase C:      520 tests
 Phase D:      523 tests
 Phase D.1:    530 tests
 Phase E:      554 tests
-Phase F:      598 tests ← CURRENT
+Phase F:      598 tests
 Phase G:      598 tests (runtime verification, no test changes)
+V2 (R/S/T/U/W/X): 1,014 tests
+pgvector semantic retrieval: 1,052 tests ← CURRENT (verified 2026-09-11)
 ```
 
 ---
@@ -74,7 +121,7 @@ Phase G:      598 tests (runtime verification, no test changes)
 | Memory | ✅ Complete | Persistent CRUD, lifecycle, scopes, ownership |
 | Retrieval | ✅ Complete | Keyword, semantic, hybrid — all owner-isolated |
 | Prompt Intelligence | ⚠️ Partially complete | Pipeline verified; external LLM not configured |
-| Gateway | ⚠️ Partially complete | Auth + enrichment verified; external forwarding not verified |
+| Gateway | ⚠️ Partially complete | Auth + enrichment verified; external forwarding verified on Railway deployment (needs provider keys for real model calls) |
 | Security | ✅ Complete | API keys, ownership, rate limiting, audit trail |
 | Persistence | ✅ Complete | PostgreSQL with InMemory fallback |
 | Reliability | ✅ Complete | Startup, health, error handling, logging |
@@ -84,7 +131,10 @@ Phase G:      598 tests (runtime verification, no test changes)
 
 ## Remaining Considerations
 
-- **PostgreSQL Runtime Verification** — Pending Docker/infrastructure availability
+- ~~**PostgreSQL Runtime Verification**~~ — Executed 2026-09-09 with a local
+  PostgreSQL 14 server (no Docker): all Postgres-backed test suites pass and both
+  migrations apply cleanly. See `CURRENT_STATUS.md` for the verified baseline.
 - **JWT Authentication** — For browser-based applications (out of scope)
-- **Controller Integration Tests** — Not yet implemented
+- ~~**Controller Integration Tests**~~ — Implemented (`PostgresE2EFactory` +
+  `PhaseWIntegrationTests` + `PhaseXApiContractTests`)
 - **FreeLLMApi Integration** — Requires valid API key

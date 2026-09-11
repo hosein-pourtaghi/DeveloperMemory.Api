@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using DeveloperMemory.Domain.Entities;
@@ -142,10 +143,15 @@ public class PostgresVectorStore : IVectorStore
             var profileKey = $"{_options.Provider}/{_options.Model}";
             var dimensions = queryVector.Length;
 
-            // Convert query vector to PostgreSQL array format
+            // Convert query vector to PostgreSQL pgvector text form ([1,2,3]).
+            // Invariant culture is mandatory: under comma-decimal locales a
+            // culture-sensitive format would corrupt the vector literal.
             var vectorStr = FormatVectorForPg(queryVector);
 
-            // Search using raw SQL for pgvector operations
+            // Search using raw SQL for pgvector operations.
+            // The SELECT must include every EF-mapped column of VectorEntry so
+            // EF Core can materialize the entity (extra computed columns like
+            // "Similarity" are allowed; unmapped, missing columns are not).
             var sql = $@"
                 SELECT
                     ""Id"",
@@ -153,7 +159,11 @@ public class PostgresVectorStore : IVectorStore
                     ""Provider"",
                     ""Model"",
                     ""Version"",
-                    1.0 - (""Vector"" <=> '{vectorStr}'::vector) AS ""Similarity""
+                    ""Vector"",
+                    ""Dimensions"",
+                    ""CreatedAt"",
+                    ""UpdatedAt"",
+                    ""ContentHash""
                 FROM ""VectorEntries""
                 WHERE ""Provider"" = @provider
                   AND ""Model"" = @model
@@ -299,7 +309,7 @@ public class PostgresVectorStore : IVectorStore
 
     private static string FormatVectorForPg(float[] vector)
     {
-        return $"[{string.Join(",", vector)}]";
+        return $"[{string.Join(",", vector.Select(v => v.ToString("R", CultureInfo.InvariantCulture)))}]";
     }
 
     private static string ComputeContentHash(float[] values)

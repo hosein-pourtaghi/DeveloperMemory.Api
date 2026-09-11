@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using DeveloperMemory.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -13,9 +14,11 @@ using Pgvector;
 namespace DeveloperMemory.Infrastructure.Migrations
 {
     [DbContext(typeof(DeveloperMemoryDbContext))]
-    partial class DeveloperMemoryDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260909164235_EnablePgvectorSemanticRetrieval")]
+    partial class EnablePgvectorSemanticRetrieval
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
